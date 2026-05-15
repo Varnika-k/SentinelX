@@ -1,0 +1,6 @@
+{
+  "name": "Sentinel X",
+  "description": "Autonomous Multi-Agent Cyber Defense Simulator. Visualize network threats and autonomous containment in a cinematic SOC dashboard.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["Real-time simulation", "AI Threat Intelligence", "Network Visualization"]
+}

@@ -1,0 +1,106 @@
+@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Share+Tech+Mono&family=JetBrains+Mono:wght@300;400;500&display=swap');
+@import "tailwindcss";
+
+@theme {
+  /* Typography System */
+  --font-display: "Orbitron", sans-serif;
+  --font-heading: "Share Tech Mono", monospace;
+  --font-body: "JetBrains Mono", monospace;
+  
+  /* Aliases */
+  --font-ui: var(--font-heading);
+  --font-ai: var(--font-body);
+
+  /* Color System */
+  --color-void: #03060F;
+  --color-surface: #080E1C;
+  --color-panel: #0D1628;
+  --color-elevated: #131F35;
+  --color-faint: #1A2E4A;
+  --color-border: #1A3050;
+  
+  --color-accent-cyan: #00FFD1;
+  --color-accent-blue: #4FC3F7;
+  
+  /* State Colors */
+  --color-state-safe: #00E676;
+  --color-state-danger: #FF1744;
+  --color-state-warning: #FFD740;
+  --color-state-iso: #2979FF;
+  --color-state-patched: #D500F9;
+  --color-state-amber: #FFD740;
+
+  /* Zone Colors */
+  --color-zone-perimeter: #4FC3F7;
+  --color-zone-core: #00FFD1;
+  --color-zone-data: #FF1744;
+  --color-zone-app: #00E676;
+  --color-zone-endpoint: #FFD740;
+  --color-zone-mgmt: #D500F9;
+
+  /* Text Colors */
+  --color-text-primary: #D8EFFF;
+  --color-text-secondary: #5A7FA8;
+  
+  /* Legacy aliases for compatibility */
+  --color-neon-cyan: var(--color-accent-cyan);
+  --color-neon-blue: var(--color-accent-blue);
+  --color-neon-green: var(--color-state-safe);
+  --color-neon-red: var(--color-state-danger);
+  --color-neon-amber: var(--color-state-warning);
+  --color-neon-purple: var(--color-state-patched);
+}
+
+@layer base {
+  body {
+    @apply bg-void text-text-primary antialiased overflow-x-hidden font-body;
+    cursor: crosshair;
+  }
+}
+
+@layer utilities {
+  .cyber-grid {
+    background-image: 
+      linear-gradient(var(--color-panel) 1px, transparent 1px),
+      linear-gradient(90deg, var(--color-panel) 1px, transparent 1px);
+    background-size: 40px 40px;
+  }
+
+  .text-glow-cyan {
+    text-shadow: 0 0 10px rgba(0, 255, 209, 0.5), 0 0 20px rgba(0, 255, 209, 0.3);
+  }
+
+  .text-glow-red {
+    text-shadow: 0 0 10px rgba(255, 23, 68, 0.5), 0 0 20px rgba(255, 23, 68, 0.3);
+  }
+
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 3px;
+  }
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background: var(--color-void);
+  }
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    background: rgba(0, 255, 209, 0.3);
+    border-radius: 2px;
+  }
+}
+
+@keyframes scanline {
+  0% { transform: translateY(-100%); }
+  100% { transform: translateY(100vh); }
+}
+
+.animate-scanline {
+  animation: scanline 4s linear infinite;
+}
+
+@keyframes glitch {
+  0%, 94%, 100% { transform: none; }
+  95% { transform: skewX(-2deg); }
+  97% { transform: skewX(1deg); }
+}
+
+.animate-glitch {
+  animation: glitch 8s infinite;
+}
