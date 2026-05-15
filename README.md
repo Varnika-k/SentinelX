@@ -88,6 +88,6 @@ Running the Project
 
 npm install
 
-2)Start the development server:
+2) Start the development server:
 
 npm run dev
