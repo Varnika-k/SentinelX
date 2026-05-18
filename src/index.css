@@ -1,106 +1,125 @@
-@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Share+Tech+Mono&family=JetBrains+Mono:wght@300;400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Share+Tech+Mono&family=JetBrains+Mono:wght@300;400;500;600&display=swap');
 @import "tailwindcss";
 
 @theme {
-  /* Typography System */
-  --font-display: "Orbitron", sans-serif;
-  --font-heading: "Share Tech Mono", monospace;
-  --font-body: "JetBrains Mono", monospace;
+  /* Typography System - Shifting from game-y to precision enterprise */
+  --font-sans: "Inter", system-ui, sans-serif;
+  --font-display: "Inter", sans-serif;
+  --font-heading: "Inter", sans-serif;
+  --font-mono: "JetBrains Mono", monospace;
+  --font-accent: "Share Tech Mono", monospace;
   
   /* Aliases */
-  --font-ui: var(--font-heading);
-  --font-ai: var(--font-body);
+  --font-ui: var(--font-sans);
+  --font-ai: var(--font-mono);
 
-  /* Color System */
-  --color-void: #03060F;
-  --color-surface: #080E1C;
-  --color-panel: #0D1628;
-  --color-elevated: #131F35;
-  --color-faint: #1A2E4A;
-  --color-border: #1A3050;
+  /* Color System - Palantir/Anduril inspired precision palette */
+  --color-void: #020408;
+  --color-surface: #0a0d14;
+  --color-panel: #11151f;
+  --color-elevated: #1a1f2e;
+  --color-faint: #232a3d;
+  --color-border: #1e2535;
+  --color-border-bright: #2d364d;
   
-  --color-accent-cyan: #00FFD1;
-  --color-accent-blue: #4FC3F7;
+  /* Modern High-Precision Accents */
+  --color-accent-cyan: #00f2ff;
+  --color-accent-blue: #3b82f6;
+  --color-accent-indigo: #6366f1;
   
-  /* State Colors */
-  --color-state-safe: #00E676;
-  --color-state-danger: #FF1744;
-  --color-state-warning: #FFD740;
-  --color-state-iso: #2979FF;
-  --color-state-patched: #D500F9;
-  --color-state-amber: #FFD740;
+  /* Operational State Colors - Muted but clear */
+  --color-state-safe: #10b981;
+  --color-state-danger: #ef4444;
+  --color-state-warning: #f59e0b;
+  --color-state-iso: #3b82f6;
+  --color-state-patched: #a855f7;
+  --color-state-amber: #f59e0b;
 
   /* Zone Colors */
-  --color-zone-perimeter: #4FC3F7;
-  --color-zone-core: #00FFD1;
-  --color-zone-data: #FF1744;
-  --color-zone-app: #00E676;
-  --color-zone-endpoint: #FFD740;
-  --color-zone-mgmt: #D500F9;
+  --color-zone-perimeter: #3b82f6;
+  --color-zone-core: #00f2ff;
+  --color-zone-data: #ef4444;
+  --color-zone-app: #10b981;
+  --color-zone-endpoint: #f59e0b;
+  --color-zone-mgmt: #a855f7;
 
-  /* Text Colors */
-  --color-text-primary: #D8EFFF;
-  --color-text-secondary: #5A7FA8;
+  /* Data-Driven Text Colors */
+  --color-text-primary: #f1f5f9;
+  --color-text-secondary: #94a3b8;
+  --color-text-tertiary: #64748b;
   
-  /* Legacy aliases for compatibility */
-  --color-neon-cyan: var(--color-accent-cyan);
-  --color-neon-blue: var(--color-accent-blue);
-  --color-neon-green: var(--color-state-safe);
-  --color-neon-red: var(--color-state-danger);
-  --color-neon-amber: var(--color-state-warning);
-  --color-neon-purple: var(--color-state-patched);
+  /* Utilities for precision glow */
+  --shadow-precision: 0 0 1px rgba(0, 242, 255, 0.4), 0 0 8px rgba(0, 242, 255, 0.1);
+  --shadow-danger: 0 0 1px rgba(239, 68, 68, 0.4), 0 0 8px rgba(239, 68, 68, 0.1);
 }
 
 @layer base {
   body {
-    @apply bg-void text-text-primary antialiased overflow-x-hidden font-body;
-    cursor: crosshair;
+    @apply bg-void text-text-primary antialiased overflow-x-hidden font-sans;
+    cursor: default;
+    letter-spacing: -0.01em;
+  }
+
+  button {
+    cursor: pointer;
   }
 }
 
 @layer utilities {
   .cyber-grid {
     background-image: 
-      linear-gradient(var(--color-panel) 1px, transparent 1px),
-      linear-gradient(90deg, var(--color-panel) 1px, transparent 1px);
-    background-size: 40px 40px;
+      linear-gradient(var(--color-border) 1px, transparent 1px),
+      linear-gradient(90deg, var(--color-border) 1px, transparent 1px);
+    background-size: 50px 50px;
+    mask-image: radial-gradient(circle at center, black 30%, transparent 80%);
   }
 
-  .text-glow-cyan {
-    text-shadow: 0 0 10px rgba(0, 255, 209, 0.5), 0 0 20px rgba(0, 255, 209, 0.3);
+  .text-glow-precision {
+    text-shadow: 0 0 10px rgba(0, 242, 255, 0.3);
   }
 
-  .text-glow-red {
-    text-shadow: 0 0 10px rgba(255, 23, 68, 0.5), 0 0 20px rgba(255, 23, 68, 0.3);
+  .glass-panel {
+    @apply bg-panel/80 backdrop-blur-md border border-border-bright/30;
+  }
+
+  .precision-button {
+    @apply relative px-4 py-1.5 text-[11px] font-medium tracking-wider uppercase transition-all
+           border border-border-bright/50 hover:border-accent-cyan/50 hover:bg-accent-cyan/5;
+    clip-path: polygon(4px 0, 100% 0, 100% calc(100% - 4px), calc(100% - 4px) 100%, 0 100%, 0 4px);
   }
 
   .custom-scrollbar::-webkit-scrollbar {
-    width: 3px;
+    width: 2px;
   }
   .custom-scrollbar::-webkit-scrollbar-track {
-    background: var(--color-void);
+    background: transparent;
   }
   .custom-scrollbar::-webkit-scrollbar-thumb {
-    background: rgba(0, 255, 209, 0.3);
-    border-radius: 2px;
+    @apply bg-border-bright/30 rounded-full hover:bg-accent-cyan/40;
   }
 }
 
-@keyframes scanline {
-  0% { transform: translateY(-100%); }
-  100% { transform: translateY(100vh); }
+@keyframes pulse-precision {
+  0%, 100% { opacity: 0.15; }
+  50% { opacity: 0.3; }
 }
 
-.animate-scanline {
-  animation: scanline 4s linear infinite;
+.animate-pulse-precision {
+  animation: pulse-precision 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
 
-@keyframes glitch {
-  0%, 94%, 100% { transform: none; }
-  95% { transform: skewX(-2deg); }
-  97% { transform: skewX(1deg); }
+@keyframes slide-reveal {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(100%); }
 }
 
-.animate-glitch {
-  animation: glitch 8s infinite;
+.skeleton-loading {
+  @apply relative overflow-hidden bg-faint rounded-sm;
+}
+
+.skeleton-loading::after {
+  content: "";
+  @apply absolute inset-0;
+  background: linear-gradient(90deg, transparent, rgba(0, 242, 255, 0.05), transparent);
+  animation: slide-reveal 1.5s infinite;
 }

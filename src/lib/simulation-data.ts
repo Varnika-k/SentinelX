@@ -1,13 +1,19 @@
-import { NodeStatus, NetworkNode, NetworkLink, SimulationEvent, SimulationState, AttackType, NodeType } from '../types/simulation';
+import { NetworkNode, NetworkLink, NodeType } from '../types/network';
+import { TelemetryEvent } from '../types/telemetry';
+import { SimulationState, AttackType } from '../types/simulation';
+import { TelemetryService } from '../core/telemetry-service';
 
 export const INITIAL_NODES: NetworkNode[] = [
   { id: 'gw-1', label: 'Internet Gateway', type: 'gateway', x: 10, y: 50, status: 'safe', criticality: 0.9, vulnerability: 0.4, threatScore: 0 },
   { id: 'fw-1', label: 'External Firewall', type: 'firewall', x: 25, y: 50, status: 'safe', criticality: 0.8, vulnerability: 0.2, threatScore: 0 },
-  { id: 'srv-1', label: 'Main Server', type: 'server', x: 50, y: 30, status: 'safe', criticality: 0.95, vulnerability: 0.3, threatScore: 0 },
+  { id: 'srv-1', label: 'Main Server', type: 'server', x: 45, y: 30, status: 'safe', criticality: 0.95, vulnerability: 0.3, threatScore: 0 },
   { id: 'db-1', label: 'User Database', type: 'database', x: 75, y: 30, status: 'safe', criticality: 1.0, vulnerability: 0.2, threatScore: 0 },
-  { id: 'pc-1', label: 'Admin Workstation', type: 'workstation', x: 50, y: 70, status: 'safe', criticality: 0.7, vulnerability: 0.5, threatScore: 0 },
+  { id: 'pc-1', label: 'Admin Workstation', type: 'workstation', x: 45, y: 70, status: 'safe', criticality: 0.7, vulnerability: 0.5, threatScore: 0 },
   { id: 'hr-1', label: 'HR Portal', type: 'hr-system', x: 75, y: 70, status: 'safe', criticality: 0.6, vulnerability: 0.6, threatScore: 0 },
-  { id: 'pc-2', label: 'Sales PC', type: 'workstation', x: 40, y: 90, status: 'safe', criticality: 0.4, vulnerability: 0.7, threatScore: 0 },
+  { id: 'pc-2', label: 'Sales PC', type: 'workstation', x: 35, y: 90, status: 'safe', criticality: 0.4, vulnerability: 0.7, threatScore: 0 },
+  { id: 'cloud-1', label: 'AWS S3 Proxy', type: 'gateway', x: 60, y: 15, status: 'safe', criticality: 0.8, vulnerability: 0.4, threatScore: 0 },
+  { id: 'backup-1', label: 'Offline Backup', type: 'database', x: 90, y: 50, status: 'safe', criticality: 1.0, vulnerability: 0.1, threatScore: 0 },
+  { id: 'iot-1', label: 'Security Cam', type: 'gateway', x: 20, y: 80, status: 'safe', criticality: 0.2, vulnerability: 0.9, threatScore: 0 },
 ];
 
 export const INITIAL_LINKS: NetworkLink[] = [
@@ -18,6 +24,9 @@ export const INITIAL_LINKS: NetworkLink[] = [
   { id: 'l5', source: 'pc-1', target: 'hr-1', traffic: 0.2, riskWeight: 0.1 },
   { id: 'l6', source: 'pc-1', target: 'pc-2', traffic: 0.1, riskWeight: 0.1 },
   { id: 'l7', source: 'srv-1', target: 'hr-1', traffic: 0.4, riskWeight: 0.1 },
+  { id: 'l8', source: 'cloud-1', target: 'srv-1', traffic: 0.3, riskWeight: 0.2 },
+  { id: 'l9', source: 'db-1', target: 'backup-1', traffic: 0.1, riskWeight: 0.05 },
+  { id: 'l10', source: 'iot-1', target: 'fw-1', traffic: 0.1, riskWeight: 0.4 },
 ];
 
 export function getThreatSeverity(compromisedCount: number, totalCount: number): 'low' | 'medium' | 'high' | 'critical' {
@@ -28,15 +37,8 @@ export function getThreatSeverity(compromisedCount: number, totalCount: number):
   return 'critical';
 }
 
-export function createEvent(message: string, type: any, severity: any = 'low', nodeId?: string): SimulationEvent {
-  return {
-    id: Math.random().toString(36).substring(7),
-    timestamp: new Date(),
-    type,
-    message,
-    severity,
-    nodeId,
-  };
+export function createEvent(message: string, type: any, severity: any = 'low', nodeId?: string): TelemetryEvent {
+  return TelemetryService.createEvent(message, type, severity, undefined, nodeId);
 }
 
 export const SCENARIOS = {

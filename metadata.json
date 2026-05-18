@@ -1,6 +1,11 @@
 {
   "name": "Sentinel X",
-  "description": "Autonomous Multi-Agent Cyber Defense Simulator. Visualize network threats and autonomous containment in a cinematic SOC dashboard.",
+  "description": "Enterprise-grade SOC Operations Center & Autonomous Cyber Defense Simulator. Advanced incident management, real-time threat correlation, and AI-powered investigation workflows.",
   "requestFramePermissions": [],
-  "majorCapabilities": ["Real-time simulation", "AI Threat Intelligence", "Network Visualization"]
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API",
+    "Real-time simulation",
+    "AI Threat Intelligence",
+    "Network Visualization"
+  ]
 }

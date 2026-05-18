@@ -1,0 +1,29 @@
+services:
+  sentinelx:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3000/api/health').then(r => r.ok ? process.exit(0) : process.exit(1)).catch(() => process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Setup future Redis for state persistence/caching
+  redis:
+    image: redis:alpine
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
+
+  # Placeholder for Kafka if enterprise scale is needed
+  # zookeeper:
+  #   image: bitnami/zookeeper:latest
+  # kafka:
+  #   image: bitnami/kafka:latest
+  #   depends_on:
+  #     - zookeeper

@@ -1,51 +1,41 @@
-# CyberStrike Nexus: Technical Intelligence Report & Documentation
+# SentinelX: Technical Intelligence Report & Documentation
 
 ## 1. Project Identity
-**CyberStrike Nexus** is a full-stack cybersecurity simulation environment. It uses a reactive state-machine to model network traffic, vulnerability exposure, and threat propagation.
+**SentinelX** is an AI-Native Cyber Intelligence & Autonomous Defense Platform. It utilizes an event-driven architecture to visualize and mitigate synthetic and real-world cyber threats.
 
-## 2. Core Architecture
-The system is built on a **Modular State Architecture**:
-*   **Frontend**: React + Tailwind CSS for a high-fidelity "Command Center" UI.
-*   **Animation**: `motion` (Framer Motion) for real-time visual feedback and state transitions.
-*   **Data Visualization**: D3.js for the dynamic force-directed network graph.
-*   **Simulation Engine**: A custom React Hook (`useSimulation`) that manages the lifecycle of nodes, links, and events.
+## 2. Enterprise Architecture
+The system follows a **Flux-inspired Telemetry Pipeline**:
+*   **Backend (FastAPI-Style Node.js)**: A high-performance Express server managing a WebSocket gateway.
+*   **Real-Time Gateway**: Streams telemetry events (Attacks, Logs, Metrics) directly to connected SOC consoles.
+*   **Telemetry Bus**: A centralized frontend pub/sub system that decouples the data source from the UI components.
+*   **Visualization Layer**: D3.js powered "Battlespace" for tactical network awareness.
+*   **AI Layer**: Gemini-integrated threat analysis for rapid incident response.
 
-## 3. Deep Dive: Component Breakdown
+## 3. Data Infrastructure
 
-### A. The Network Graph (`src/components/NetworkGraph.tsx`)
-This is the heart of the project.
-*   **What it does**: It renders the network topology. It uses D3.js to calculate physical forces (attraction/repulsion) so nodes spread out naturally.
-*   **Key Logic**:
-    *   **Nodes**: Represent servers, databases, and workstations. Their color indicates status (Safe, Compromised, Isolated).
-    *   **Links**: Represent communication paths. Animated "packets" move along these links to visualize data flow.
-    *   **Heatmap**: A visual overlay that calculates the "Radius of Exposure" based on node vulnerability.
+### A. Telemetry Bus (`src/telemetry/bus.ts`)
+The central nervous system of the SOC.
+*   **Topics**: `node:update`, `attack:alert`, `metric:tick`, `system:log`, `threat:escalation`.
+*   **Subscription**: UI components subscribe to specific topics to react to incoming telemetry.
 
-### B. Control Panel (`src/components/ControlPanel.tsx`)
-The operational interface for the simulation.
-*   **Attack Vectors**: Allows selecting attack types (Ransomware, DDoS, etc.) and targets.
-*   **Intensity Slider**: Controls the "Success Probability" and "Damage Speed" of attacks.
-*   **Scenario Presets**: Pre-configured event chains (e.g., "Critical Infrastructure Strike") that trigger multiple coordinated attacks.
-*   **Defense Modules**: Toggles global security policies like "Intrusion Detection" or "Deep Packet Inspection."
+### B. Telemetry Store (`src/telemetry/store.ts`)
+The single source of truth for the application state. It listens to the Telemetry Bus and maintains the current "world view."
 
-### C. Node Details (`src/components/NodeDetails.tsx`)
-A deep-scan view of a specific network entity.
-*   **Threat Analysis**: Uses the **Gemini API** to generate real-time, context-aware security intelligence based on the node's current status and surrounding network conditions.
-*   **Neighbors List**: Shows direct connections and their health, allowing for targeted isolation strategies.
+### C. Live Backend (`server.ts`)
+A simulation-ready backend that:
+*   Generates synthetic infrastructure events.
+*   Broadcasts events over WebSockets.
+*   Supports future integration with Kafka, SIEMs, or CloudWatch via the "Normalization Layer".
 
-### D. Event Panel (`src/components/EventPanel.tsx`)
-A chronological log of every system event.
-*   **Function**: Acts as a SIEM (Security Information and Event Management) log, tracking successful breaches, defense activations, and system resets.
-
-## 4. The Simulation Logic (`src/hooks/useSimulation.ts`)
-This is the "Brain" of the project. It runs a `setInterval` loop (the "Heartbeat") every 1000ms:
-1.  **Threat Propagation**: It checks if a node is compromised. If it is, it has a chance to "infect" its neighbors based on their vulnerability scores.
-2.  **Defense Mitigation**: It applies active defense modules to reduce the spread chance or automatically recover nodes.
-3.  **Event Generation**: It logs every state change to the Event Panel.
-
-## 5. How to Use & Learn
-1.  **Monitor**: Start by looking at the **Network Graph**. High "Exposure" (orange glows) indicates weak points.
-2.  **Attack**: Use the **Control Panel** to target a specific node (e.g., `FW-1`) with a `Zero-Day` attack. Watch the red color spread.
-3.  **Defend**: Quickly select the compromised node and click **PATCH_NODE** or **ISOLATE**.
-4.  **Analyze**: Open the **Incident Report** to see a summary of your defensive performance generated by AI.
+## 4. Operational Flow
+1.  **Ingestion**: Backend detects a "Brute Force" attempt on `fw-1`.
+2.  **Broadcast**: Server sends a JSON envelope via WebSocket.
+3.  **Client normalization**: `TelemetryClient` receives the frame and publishes to the local bus.
+4.  **UI Reaction**: 
+    *   `ThreatBanner` updates to "High".
+    *   `EventPanel` logs the IDS alert.
+    *   `NetworkGraph` pulses `fw-1` red.
+    *   `MetricsPanel` reflects the security score drop.
 
 ---
+*Powered by SentinelX Core - Enterprise Cyber Intelligence.*
