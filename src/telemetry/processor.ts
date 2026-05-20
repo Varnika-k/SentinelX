@@ -1,9 +1,11 @@
 import { SimulationState } from '../types/simulation';
 import { TelemetryTopic, TelemetryEnvelope, NodeUpdatePayload, MetricTickPayload, AttackAlertPayload, DefenseActionPayload } from './schemas';
 import { TelemetryService } from '../core/telemetry-service';
-import { INITIAL_NODES, INITIAL_LINKS } from '../lib/simulation-data';
+import { INITIAL_NODES, INITIAL_LINKS, INITIAL_IDENTITIES, INITIAL_ROLES, INITIAL_RELATIONSHIPS, INITIAL_ENVIRONMENTS, INITIAL_KNOWLEDGE_BASE, INITIAL_ORCHESTRATION } from '../lib/simulation-data';
 import { incidentManager } from '../core/incident-manager';
 import { defenseEngine } from '../core/defense-engine';
+import { CorrelationEngine } from '../core/knowledge-engine';
+import { AgentOrchestrator } from '../core/agent-orchestrator';
 
 /**
  * TelemetryProcessor
@@ -35,13 +37,21 @@ export class TelemetryProcessor {
 
       case TelemetryTopic.UI_ACTION:
         if (payload.action === 'REPLAY_RESET') {
+          incidentManager.reset();
           return {
             ...state,
             nodes: INITIAL_NODES,
             links: INITIAL_LINKS,
+            identities: INITIAL_IDENTITIES,
+            roles: INITIAL_ROLES,
+            identityRelationships: INITIAL_RELATIONSHIPS,
+            environments: INITIAL_ENVIRONMENTS,
+            knowledgeBase: INITIAL_KNOWLEDGE_BASE,
+            agentOrchestration: INITIAL_ORCHESTRATION,
             events: [],
             incidents: [],
             threatLevel: 'low',
+            spreadVelocity: 1.0,
             metrics: TelemetryService.calculateMetrics(INITIAL_NODES)
           };
         }
@@ -90,6 +100,49 @@ export class TelemetryProcessor {
           ...state,
           defenseRecommendations: defenseEngine.analyze(state.nodes, state.links, state.incidents)
         };
+        if (payload.activeModules) {
+          newState.activeDefenseModules = payload.activeModules;
+        }
+        if (payload.spreadVelocity !== undefined) {
+          newState.spreadVelocity = payload.spreadVelocity;
+        }
+        break;
+
+      case TelemetryTopic.INCIDENT_REPORT:
+        {
+          const incidents = [...state.incidents, payload];
+          const campaigns = CorrelationEngine.correlateIncident(payload, state.knowledgeBase);
+          newState = {
+            ...state,
+            incidents,
+            knowledgeBase: {
+              ...state.knowledgeBase,
+              campaigns
+            }
+          };
+        }
+        break;
+
+      case TelemetryTopic.IAM_IDENTITY_COMPROMISED:
+        newState = {
+          ...state,
+          identities: state.identities.map(id => 
+            id.id === payload.identityId ? { ...id, status: 'compromised', riskScore: 100 } : id
+          )
+        };
+        newState = this.handleGenericLog(newState, envelope);
+        break;
+
+      case TelemetryTopic.IAM_PRIVILEGE_CHANGE:
+        newState = {
+          ...state,
+          identities: state.identities.map(id => 
+            id.id === payload.identityId 
+              ? { ...id, roles: payload.action === 'grant' ? [...id.roles, payload.roleId] : id.roles.filter(r => r !== payload.roleId) } 
+              : id
+          )
+        };
+        newState = this.handleGenericLog(newState, envelope);
         break;
 
       default:
@@ -111,27 +164,54 @@ export class TelemetryProcessor {
         : node
     );
 
+    const baselines = CorrelationEngine.updateBaselines([
+      TelemetryService.createEvent(`Update for ${payload.nodeId}`, 'system', 'low', 'system', payload.nodeId)
+    ], state.knowledgeBase.baselines);
+
+    const agentOrchestration = AgentOrchestrator.processTelemetry(
+      TelemetryService.createEvent(`Node update for ${payload.nodeId}`, 'system', 'low', 'system', payload.nodeId),
+      state.agentOrchestration,
+      newNodes
+    );
+
     return {
       ...state,
-      nodes: newNodes
+      nodes: newNodes,
+      knowledgeBase: {
+        ...state.knowledgeBase,
+        baselines
+      },
+      agentOrchestration
     };
   }
 
   private static handleMetricTick(state: SimulationState, payload: MetricTickPayload): SimulationState {
+    const agentOrchestration = AgentOrchestrator.processTelemetry(
+      TelemetryService.createEvent('Metric tick received', 'system', 'low'),
+      state.agentOrchestration,
+      state.nodes
+    );
+
     return {
       ...state,
       metrics: { ...state.metrics, ...payload.metrics },
-      threatLevel: payload.metrics.threatLevel
+      threatLevel: payload.metrics.threatLevel,
+      agentOrchestration
     };
   }
 
   private static handleAttackAlert(state: SimulationState, payload: AttackAlertPayload): SimulationState {
+    const payloadTimestamp = payload.timestamp ? new Date(payload.timestamp) : undefined;
+
     const newEvent = TelemetryService.createEvent(
       payload.message || `ALERT: ${payload.attackType.toUpperCase()} detected on ${payload.targetId}`,
       'attack',
       payload.severity,
       payload.origin,
-      payload.targetId
+      payload.targetId,
+      undefined,
+      undefined,
+      payloadTimestamp
     );
 
     const newNodes = payload.targetId ? state.nodes.map(node => 
@@ -142,21 +222,44 @@ export class TelemetryProcessor {
 
     const incidents = incidentManager.processEvent(newEvent, newNodes, state.links);
 
+    // Correlate last updated incident into campaigns
+    const lastIncident = incidents.sort((a,b) => b.lastUpdateTime.getTime() - a.lastUpdateTime.getTime())[0];
+    let campaigns = state.knowledgeBase.campaigns;
+    if (lastIncident) {
+      campaigns = CorrelationEngine.correlateIncident(lastIncident, state.knowledgeBase);
+    }
+
+    const agentOrchestration = AgentOrchestrator.processTelemetry(
+      newEvent,
+      state.agentOrchestration,
+      newNodes
+    );
+
     return {
       ...state,
       nodes: newNodes,
       events: [newEvent, ...state.events].slice(0, 100),
-      incidents
+      incidents,
+      knowledgeBase: {
+        ...state.knowledgeBase,
+        campaigns
+      },
+      agentOrchestration
     };
   }
 
   private static handleDefenseAction(state: SimulationState, payload: DefenseActionPayload): SimulationState {
+    const payloadTimestamp = payload.timestamp ? new Date(payload.timestamp) : undefined;
+
     const newEvent = TelemetryService.createEvent(
       payload.message || `DEFENSE: ${payload.module.replace('_', ' ').toUpperCase()} ${payload.action} on ${payload.targetId || 'global'}`,
       'defense',
       'low',
       'system',
-      payload.targetId
+      payload.targetId,
+      undefined,
+      undefined,
+      payloadTimestamp
     );
 
     const incidents = incidentManager.processEvent(newEvent, state.nodes, state.links);
@@ -170,12 +273,17 @@ export class TelemetryProcessor {
 
   private static handleGenericLog(state: SimulationState, envelope: TelemetryEnvelope): SimulationState {
     const payload = envelope.payload;
+    const payloadTimestamp = payload.timestamp ? new Date(payload.timestamp) : undefined;
+
     const newEvent = TelemetryService.createEvent(
       payload.message || `System event: ${envelope.topic}`,
       'system',
       payload.severity || 'low',
       payload.source,
-      payload.targetId || payload.nodeId
+      payload.targetId || payload.nodeId,
+      undefined,
+      undefined,
+      payloadTimestamp
     );
 
     const incidents = incidentManager.processEvent(newEvent, state.nodes, state.links);

@@ -14,15 +14,19 @@ import { VisualControlPanel } from '../features/VisualControlPanel';
 import { VisualSettings } from '../viz/NetworkGraph';
 import { AIIntelligencePanel } from '../features/AIIntelligencePanel';
 import { AnalyticsPanel } from '../features/AnalyticsPanel';
+import { IdentityIntelligence } from '../features/IdentityIntelligence';
+import { IntelligenceHub } from '../features/IntelligenceHub';
 import { GraphIntelligenceEngine } from '../../lib/graph-intelligence';
 import { SOCDashboard } from '../features/SOCDashboard';
 import { AutonomousDefensePanel } from '../features/AutonomousDefensePanel';
+import { AIOperationsCenter } from '../features/AIOperationsCenter';
+import { DigitalTwinDashboard } from '../features/DigitalTwinDashboard';
 
 interface SimulationViewProps {
   simulationState: SimulationState;
   isOnline: boolean;
   simulationActions: {
-    launchAttack: (type: any, targetId?: string, intensity?: number) => void;
+    launchAttack: (type: any, targetId?: string, intensity?: number, identityId?: string) => void;
     launchScenario: (id: string) => void;
     activateDefense: () => void;
     isolateNode: (id: string) => void;
@@ -35,6 +39,8 @@ interface SimulationViewProps {
     addIncidentNote: (id: string, note: string) => void;
     applyDefenseRecommendation: (rec: any) => void;
     dismissDefenseRecommendation: (recId: string) => void;
+    setSpreadVelocity: (velocity: number) => void;
+    toggleSimulation: () => void;
   };
   selectedNode: NetworkNode | null;
   onSelectNode: (node: NetworkNode | null) => void;
@@ -61,7 +67,7 @@ export function SimulationView({
 }: SimulationViewProps) {
   const [highlightedNodeId, setHighlightedNodeId] = useState<string | null>(null);
   const [showVisualSettings, setShowVisualSettings] = useState(false);
-  const [activeSidePanel, setActiveSidePanel] = useState<'details' | 'ai' | 'analytics' | 'defense'>('analytics');
+  const [activeSidePanel, setActiveSidePanel] = useState<'details' | 'ai' | 'analytics' | 'defense' | 'identity' | 'intelligence' | 'ops' | 'twin'>('twin');
   const [showSOC, setShowSOC] = useState(false);
   const [visualSettings, setVisualSettings] = useState<VisualSettings>({
     intensity: 1,
@@ -126,6 +132,7 @@ export function SimulationView({
               selectedNode={selectedNode}
               allNodes={simulationState.nodes}
               allLinks={simulationState.links}
+              knowledgeBase={simulationState.knowledgeBase}
               defenseRecommendations={simulationState.defenseRecommendations}
             />
           </motion.div>
@@ -144,6 +151,66 @@ export function SimulationView({
               onApplyAction={simulationActions.applyDefenseRecommendation}
               onDismissAction={simulationActions.dismissDefenseRecommendation}
             />
+          </motion.div>
+        );
+      case 'identity':
+        return (
+          <motion.div 
+            key="identity-content"
+            initial={{ opacity: 0, scale: 0.98 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 1.02 }}
+            className="h-full p-4"
+          >
+            <IdentityIntelligence 
+              state={simulationState}
+              onHighlightIdentity={(id) => {
+                if (id) {
+                  const identity = simulationState.identities.find(i => i.id === id);
+                  if (identity && identity.accessibleNodes.length > 0) {
+                    setHighlightedNodeId(identity.accessibleNodes[0]);
+                  }
+                } else {
+                  setHighlightedNodeId(null);
+                }
+              }}
+            />
+          </motion.div>
+        );
+      case 'intelligence':
+        return (
+          <motion.div 
+            key="intelligence-content"
+            initial={{ opacity: 0, scale: 0.98 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 1.02 }}
+            className="h-full p-4"
+          >
+            <IntelligenceHub state={simulationState} />
+          </motion.div>
+        );
+      case 'ops':
+        return (
+          <motion.div 
+            key="ops-content"
+            initial={{ opacity: 0, scale: 0.98 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 1.02 }}
+            className="h-full p-4"
+          >
+            <AIOperationsCenter state={simulationState} />
+          </motion.div>
+        );
+      case 'twin':
+        return (
+          <motion.div 
+            key="twin-content"
+            initial={{ opacity: 0, scale: 0.98 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 1.02 }}
+            className="h-full p-4 overflow-y-auto custom-scrollbar"
+          >
+            <DigitalTwinDashboard onHighlightNode={setHighlightedNodeId} />
           </motion.div>
         );
       case 'analytics':
@@ -278,6 +345,10 @@ export function SimulationView({
                     onUpdateNodeVulnerability={simulationActions.updateNodeVulnerability}
                     onUpdateZoneVulnerability={simulationActions.updateZoneVulnerability}
                     onHighlightNode={setHighlightedNodeId}
+                    spreadVelocity={simulationState.spreadVelocity}
+                    onSetSpreadVelocity={simulationActions.setSpreadVelocity}
+                    isSimulating={simulationState.isSimulating}
+                    onToggleSimulation={simulationActions.toggleSimulation}
                  />
               </section>
               
@@ -386,8 +457,12 @@ export function SimulationView({
                  {/* Panel Selector Tabs - Enterprise Style */}
                   <div className="flex bg-void/50 p-1 m-6 rounded-sm border border-border">
                     {[
+                      { id: 'twin', label: 'Twin_Range' },
                       { id: 'details', label: 'Telemetry', alert: selectedNode?.status === 'compromised' },
                       { id: 'ai', label: 'AI_Intel', alert: selectedNode?.status === 'compromised' },
+                      { id: 'ops', label: 'AI_Ops' },
+                      { id: 'identity', label: 'Identity' },
+                      { id: 'intelligence', label: 'Intel' },
                       { id: 'analytics', label: 'Analytics' },
                       { id: 'defense', label: 'Defense', alert: simulationState.defenseRecommendations.filter(r => r.status === 'pending').length > 0 }
                     ].map((tab) => (

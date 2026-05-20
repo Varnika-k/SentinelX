@@ -12,14 +12,23 @@ export type ScenarioType =
   | 'critical_infrastructure' 
   | 'ransomware_storm';
 
-export type DefenseModule = 'firewall' | 'neural_isolation' | 'heuristic_scanner' | 'auto_containment';
+export type DefenseModule = 'firewall' | 'neural_isolation' | 'heuristic_scanner' | 'auto_containment' | 'traffic_scrubbing' | 'quantum_hardening';
 
 import { Incident } from './incident';
 import { DefenseRecommendation } from './defense';
+import { EnterpriseIdentity, IAMRole, IdentityRelationship, EnvironmentSegment } from './iam';
+import { CyberKnowledgeBase } from './intelligence';
+import { AgentOrchestrationState } from './agents';
 
 export interface SimulationState {
   nodes: Node[];
   links: Link[];
+  identities: EnterpriseIdentity[];
+  roles: IAMRole[];
+  identityRelationships: IdentityRelationship[];
+  environments: EnvironmentSegment[];
+  knowledgeBase: CyberKnowledgeBase;
+  agentOrchestration: AgentOrchestrationState;
   events: TelemetryEvent[];
   incidents: Incident[];
   defenseRecommendations: DefenseRecommendation[];
@@ -27,12 +36,14 @@ export interface SimulationState {
   threatLevel: Severity;
   metrics: NetworkMetrics;
   simulationSpeed: number;
+  spreadVelocity: number;
   activeDefenseModules: DefenseModule[];
 }
 
 export interface AttackPayload {
   type: AttackType;
-  targetId: string;
+  targetId?: string;
+  identityId?: string;
   intensity: number;
   origin?: string;
 }

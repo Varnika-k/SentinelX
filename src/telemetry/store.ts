@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { telemetryBus } from './bus';
 import { TelemetryTopic, TelemetryEnvelope, ConnectionStatus } from './schemas';
 import { SimulationState } from '../types/simulation';
-import { INITIAL_NODES, INITIAL_LINKS } from '../lib/simulation-data';
+import { INITIAL_NODES, INITIAL_LINKS, INITIAL_IDENTITIES, INITIAL_ROLES, INITIAL_RELATIONSHIPS, INITIAL_ENVIRONMENTS, INITIAL_KNOWLEDGE_BASE, INITIAL_ORCHESTRATION } from '../lib/simulation-data';
 import { TelemetryService } from '../core/telemetry-service';
 import { telemetryClient } from './client';
 import { TelemetryProcessor } from './processor';
@@ -17,6 +17,12 @@ export function useTelemetryStore() {
   const [state, setState] = useState<SimulationState>({
     nodes: INITIAL_NODES,
     links: INITIAL_LINKS,
+    identities: INITIAL_IDENTITIES,
+    roles: INITIAL_ROLES,
+    identityRelationships: INITIAL_RELATIONSHIPS,
+    environments: INITIAL_ENVIRONMENTS,
+    knowledgeBase: INITIAL_KNOWLEDGE_BASE,
+    agentOrchestration: INITIAL_ORCHESTRATION,
     events: [],
     incidents: [],
     defenseRecommendations: [],
@@ -24,6 +30,7 @@ export function useTelemetryStore() {
     threatLevel: 'low',
     metrics: TelemetryService.calculateMetrics(INITIAL_NODES),
     simulationSpeed: 3000,
+    spreadVelocity: 1.0,
     activeDefenseModules: ['firewall'],
   });
 

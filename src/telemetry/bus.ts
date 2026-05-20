@@ -48,7 +48,8 @@ class TelemetryBus {
     });
 
     // For debugging/dev
-    if (process.env.NODE_ENV !== 'production') {
+    const safeEnv = typeof process !== 'undefined' && typeof process.env !== 'undefined' ? process.env : {} as Record<string, string>;
+    if (safeEnv.NODE_ENV !== 'production') {
       // console.log(`[Telemetry] ${topic}:`, payload);
     }
   }

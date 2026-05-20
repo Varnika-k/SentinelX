@@ -1,6 +1,8 @@
 import { TelemetrySourceType } from '../telemetry/enterprise-schemas';
 
-export const ENV = process.env.NODE_ENV || 'development';
+const safeEnv = typeof process !== 'undefined' && typeof process.env !== 'undefined' ? process.env : {} as Record<string, string>;
+
+export const ENV = safeEnv.NODE_ENV || 'development';
 export const IS_PROD = ENV === 'production';
 export const IS_DEV = ENV === 'development';
 export const IS_STAGING = ENV === 'staging';
@@ -8,22 +10,22 @@ export const IS_STAGING = ENV === 'staging';
 export const CONFIG = {
   app: {
     name: 'SentinelX',
-    port: parseInt(process.env.PORT || '3000', 10),
+    port: parseInt(safeEnv.PORT || '3000', 10),
     host: '0.0.0.0',
     version: '1.0.0-enterprise',
   },
   ai: {
-    apiKey: process.env.GEMINI_API_KEY,
+    apiKey: safeEnv.GEMINI_API_KEY,
     model: 'gemini-1.5-flash',
-    enabled: !!process.env.GEMINI_API_KEY,
+    enabled: !!safeEnv.GEMINI_API_KEY,
   },
   telemetry: {
-    pollIntervalMs: parseInt(process.env.TELEMETRY_POLL_INTERVAL || '3000', 10),
-    maxCacheSize: parseInt(process.env.TELEMETRY_CACHE_SIZE || '1000', 10),
-    rateLimitEps: parseInt(process.env.TELEMETRY_RATE_LIMIT || '500', 10),
+    pollIntervalMs: parseInt(safeEnv.TELEMETRY_POLL_INTERVAL || '3000', 10),
+    maxCacheSize: parseInt(safeEnv.TELEMETRY_CACHE_SIZE || '1000', 10),
+    rateLimitEps: parseInt(safeEnv.TELEMETRY_RATE_LIMIT || '500', 10),
   },
   logging: {
-    level: process.env.LOG_LEVEL || (IS_PROD ? 'info' : 'debug'),
+    level: safeEnv.LOG_LEVEL || (IS_PROD ? 'info' : 'debug'),
   },
 };
 

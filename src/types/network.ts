@@ -5,6 +5,7 @@ export interface NetworkNode {
   id: string;
   label: string;
   type: NodeType;
+  environmentId: string;
   x: number;
   y: number;
   status: NodeStatus;

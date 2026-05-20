@@ -8,6 +8,10 @@ export class IncidentManager {
 
   constructor() {}
 
+  reset(): void {
+    this.incidents.clear();
+  }
+
   /**
    * Processes a new telemetry event and determines if it belongs to an existing incident
    * or starts a new one.
@@ -47,14 +51,16 @@ export class IncidentManager {
     const blastRadiusMap = graphEngine.calculateBlastRadius();
     const blastRadius = event.nodeId ? (blastRadiusMap[event.nodeId] || 0) : 0;
 
+    const eventTime = event.timestamp ? new Date(event.timestamp) : new Date();
+
     const newIncident: Incident = {
       id,
       title: `${event.type.toUpperCase()}: ${event.message.split(':')[0]}`,
       status: 'detected',
       severity: event.severity,
       priority: this.mapSeverityToPriority(event.severity),
-      detectionTime: new Date(),
-      lastUpdateTime: new Date(),
+      detectionTime: eventTime,
+      lastUpdateTime: eventTime,
       affectedNodeIds: event.nodeId ? [event.nodeId] : [],
       attackType: event.message.includes(':') ? event.message.split(':')[0] : undefined,
       events: [event],
@@ -76,7 +82,7 @@ export class IncidentManager {
     if (!incident) return;
 
     incident.events.unshift(event);
-    incident.lastUpdateTime = new Date();
+    incident.lastUpdateTime = event.timestamp ? new Date(event.timestamp) : new Date();
     
     if (event.nodeId && !incident.affectedNodeIds.includes(event.nodeId)) {
       incident.affectedNodeIds.push(event.nodeId);

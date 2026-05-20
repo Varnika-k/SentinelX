@@ -10,6 +10,7 @@ export interface AIAnalysisRequest {
     recentActivity?: any[];
     graphAnalytics?: any;
     defenseRecommendations?: any[];
+    knowledgeBase?: any;
   };
   options?: {
     stream?: boolean;

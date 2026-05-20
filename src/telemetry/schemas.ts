@@ -11,7 +11,34 @@ export enum TelemetryTopic {
   INCIDENT_REPORT = 'incident:report',
   INCIDENT_UPDATE = 'incident:update',
   DEFENSE_UPDATE = 'defense:update',
-  UI_ACTION = 'ui:action'
+  UI_ACTION = 'ui:action',
+  IAM_AUTH_EVENT = 'iam:auth',
+  IAM_PRIVILEGE_CHANGE = 'iam:privilege',
+  IAM_ACCESS_DENIED = 'iam:access_denied',
+  IAM_IDENTITY_COMPROMISED = 'iam:compromised',
+  ENV_BOUNDARY_VIOLATION = 'env:violation'
+}
+
+export interface IAMAuthPayload extends BaseTelemetryPayload {
+  identityId: string;
+  type: 'login' | 'logout' | 'token-refresh' | 'mfa-challenge';
+  status: 'success' | 'failure' | 'anomaly';
+  location?: string;
+  userAgent?: string;
+}
+
+export interface IAMPrivilegePayload extends BaseTelemetryPayload {
+  identityId: string;
+  roleId: string;
+  action: 'grant' | 'revoke' | 'elevate';
+  requestedBy: string;
+}
+
+export interface IAMAccessPayload extends BaseTelemetryPayload {
+  identityId: string;
+  resourceId: string;
+  action: string;
+  reason: string;
 }
 
 export type ConnectionStatus = 'connected' | 'reconnecting' | 'disconnected' | 'degraded';
@@ -62,6 +89,16 @@ export interface IncidentPayload extends BaseTelemetryPayload {
   status: 'active' | 'resolved';
   affectedNodes: string[];
   summary?: string;
+}
+
+export interface DefenseUpdatePayload extends BaseTelemetryPayload {
+  activeModules?: string[];
+  spreadVelocity?: number;
+}
+
+export interface ZoneUpdatePayload extends BaseTelemetryPayload {
+  zoneType: string;
+  vulnerability: number;
 }
 
 export interface TelemetryEnvelope<T = any> {

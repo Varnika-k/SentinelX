@@ -21,14 +21,12 @@ export function AttackTimeline() {
     // 1. Record incoming events into local history for replay
     const unsubHistory = telemetryBus.subscribe('*', (env) => {
       const payload = env.payload as any;
-      if (payload.source === 'replay_engine') return;
+      if (payload.source === 'replay_engine' || payload._isReplay) return;
       if (env.topic === TelemetryTopic.METRIC_TICK) return;
       if (env.topic === TelemetryTopic.UI_ACTION) return;
 
       setHistory(prev => {
         const next = [...prev, env];
-        // Side effect: load history into engine
-        // Using setTimeout to defer to next tick, avoiding render-phase update issues
         setTimeout(() => ReplayEngine.load(next), 0);
         return next;
       });
@@ -62,11 +60,25 @@ export function AttackTimeline() {
 
   const markers = useMemo(() => {
     return history.map((ev, i) => {
-      if (ev.topic === TelemetryTopic.ATTACK_ALERT) return { index: i, type: 'attack' };
-      if (ev.topic === TelemetryTopic.DEFENSE_ACTION) return { index: i, type: 'defense' };
-      if (ev.topic === TelemetryTopic.THREAT_ESCALATION) return { index: i, type: 'critical' };
+      const topic = ev.topic;
+      if (topic === TelemetryTopic.ATTACK_ALERT) return { index: i, type: 'attack' };
+      if (topic === TelemetryTopic.DEFENSE_ACTION) return { index: i, type: 'defense' };
+      if (topic === TelemetryTopic.THREAT_ESCALATION) return { index: i, type: 'critical' };
       return null;
-    }).filter(Boolean);
+    }).filter((m): m is { index: number, type: string } => m !== null);
+  }, [history]);
+
+  const incidentDuration = useMemo(() => {
+    if (history.length < 2) return '0s';
+    const first = history[0].payload.timestamp;
+    const last = history[history.length - 1].payload.timestamp;
+    if (!first || !last) return '0s';
+    try {
+      const diff = Math.max(0, Math.floor((new Date(last).getTime() - new Date(first).getTime()) / 1000));
+      return `${diff}s`;
+    } catch {
+      return '0s';
+    }
   }, [history]);
 
   if (history.length === 0 && !status.isPlaying) return null;
@@ -109,8 +121,15 @@ export function AttackTimeline() {
 
         <div className="flex items-center gap-2">
           {/* Playback Controls */}
-          <div className="flex items-center gap-1 mr-4 bg-background-light/20 p-1 rounded-lg">
-            <ControlButton icon={SkipBack} onClick={() => ReplayEngine.seek(0)} tooltip="Reset" />
+            <div className="flex items-center gap-1 mr-4 bg-background-light/20 p-1 rounded-lg">
+              <ControlButton 
+                icon={Search} 
+                onClick={() => ReplayEngine.seek(history.length)} 
+                tooltip="Jump to Live"
+                active={status.currentIndex === status.totalEvents && !status.isPlaying}
+              />
+              <div className="w-px h-4 bg-border-primary/20 mx-0.5" />
+              <ControlButton icon={SkipBack} onClick={() => ReplayEngine.seek(0)} tooltip="Reset" />
             <ControlButton 
               icon={status.isPlaying ? Pause : Play} 
               onClick={() => status.isPlaying ? ReplayEngine.pause() : ReplayEngine.start()} 
@@ -165,7 +184,7 @@ export function AttackTimeline() {
                <AnalyticsBadge label="Defenses" value={markers.filter(m => m?.type === 'defense').length} color="text-accent-gold" />
                <AnalyticsBadge label="Critical" value={markers.filter(m => m?.type === 'critical').length} color="text-state-warning" />
                <div className="flex-1" />
-               <span className="text-[8px] text-text-secondary uppercase self-end mb-1">Incident_Duration: {Math.floor(history.length * (status.speed / 1000))}s</span>
+               <span className="text-[8px] text-text-secondary uppercase self-end mb-1">Incident_Duration: {incidentDuration}</span>
             </div>
 
             {/* Scrubber */}
@@ -205,32 +224,34 @@ export function AttackTimeline() {
 
             {/* Event Snapshots (Visual Feed) */}
             <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide mask-fade-edges">
-              {history.slice(Math.max(0, status.currentIndex - 10), status.currentIndex + 5).map((ev, i) => {
+              {history.slice(Math.max(0, status.currentIndex - 8), Math.min(history.length, status.currentIndex + 8)).map((ev, i) => {
                 const globalIndex = history.indexOf(ev);
                 const isActive = globalIndex === status.currentIndex - 1;
 
                 return (
-                  <div 
+                  <motion.div 
+                    layout
                     key={`${ev.topic}-${globalIndex}`}
                     onClick={() => ReplayEngine.seek(globalIndex + 1)}
                     className={cn(
-                      "flex-shrink-0 w-32 p-2 rounded border transition-all cursor-pointer group",
+                      "flex-shrink-0 w-28 p-2 rounded border transition-all cursor-pointer group",
                       isActive ? "bg-accent-cyan/10 border-accent-cyan" : "bg-black/20 border-border-primary/30 hover:border-border-primary"
                     )}
                   >
                     <div className="flex items-center justify-between mb-1">
                       <span className={cn(
                         "text-[7px] font-bold uppercase",
-                        ev.topic.startsWith('attack') ? "text-state-danger" : "text-text-secondary"
+                        ev.topic.startsWith('attack') ? "text-state-danger" : 
+                        ev.topic.startsWith('defense') ? "text-accent-gold" : "text-text-secondary"
                       )}>
-                        {ev.topic.split(':')[1]}
+                        {ev.topic.includes(':') ? ev.topic.split(':')[1] : ev.topic}
                       </span>
                       <span className="text-[6px] opacity-40">#{globalIndex}</span>
                     </div>
-                    <p className="text-[8px] line-clamp-2 leading-tight text-text-secondary group-hover:text-text-primary transition-colors">
+                    <p className="text-[8px] line-clamp-2 leading-[1.1] text-text-secondary group-hover:text-text-primary transition-colors">
                       {(ev.payload as any).message || ev.topic}
                     </p>
-                  </div>
+                  </motion.div>
                 );
               })}
             </div>
@@ -250,7 +271,7 @@ function AnalyticsBadge({ label, value, color }: { label: string, value: number,
   );
 }
 
-function ControlButton({ icon: Icon, onClick, primary = false, tooltip = "" }: { icon: any, onClick: () => void, primary?: boolean, tooltip?: string }) {
+function ControlButton({ icon: Icon, onClick, primary = false, active = false, tooltip = "" }: { icon: any, onClick: () => void, primary?: boolean, active?: boolean, tooltip?: string }) {
   return (
     <button 
       onClick={onClick}
@@ -259,7 +280,9 @@ function ControlButton({ icon: Icon, onClick, primary = false, tooltip = "" }: {
         "w-8 h-8 flex items-center justify-center rounded transition-all",
         primary 
           ? "bg-accent-cyan text-void shadow-[0_0_10px_#00FFD1] hover:scale-105" 
-          : "text-text-secondary hover:text-text-primary hover:bg-white/10"
+          : active 
+            ? "bg-accent-cyan/20 text-accent-cyan"
+            : "text-text-secondary hover:text-text-primary hover:bg-white/10"
       )}
     >
       <Icon className={cn("w-4 h-4", primary ? "fill-current" : "")} />

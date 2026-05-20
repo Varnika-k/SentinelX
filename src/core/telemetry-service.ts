@@ -9,11 +9,12 @@ export class TelemetryService {
     origin?: string,
     target?: string,
     metadata?: Record<string, any>,
-    nodeId?: string
+    nodeId?: string,
+    timestamp?: Date
   ): TelemetryEvent {
     return {
       id: Math.random().toString(36).substring(7),
-      timestamp: new Date(),
+      timestamp: timestamp || new Date(),
       type,
       message,
       severity,

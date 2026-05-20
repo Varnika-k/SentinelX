@@ -1,11 +1,13 @@
 import { motion, AnimatePresence } from 'motion/react';
 import { Shield, RotateCcw, AlertTriangle, Users, Bug, Search, FileText, Activity, ChevronDown, Zap, ShieldAlert, Gauge, ShieldCheck } from 'lucide-react';
 import { AttackType, ScenarioType, DefenseModule, NetworkNode } from '../../types/simulation';
+import { EnterpriseIdentity } from '../../types/iam';
 import { cn } from '../../lib/utils';
 import { useState, useEffect } from 'react';
 
 export function ControlPanel({ 
   nodes,
+  identities = [],
   onLaunchAttack, 
   onLaunchScenario,
   onActivateDefense, 
@@ -21,10 +23,15 @@ export function ControlPanel({
   onOpenManual,
   onUpdateNodeVulnerability,
   onUpdateZoneVulnerability,
-  onHighlightNode
+  onHighlightNode,
+  spreadVelocity,
+  onSetSpreadVelocity,
+  isSimulating,
+  onToggleSimulation
 }: { 
   nodes: NetworkNode[],
-  onLaunchAttack: (type: AttackType, targetId?: string, intensity?: number) => void,
+  identities?: EnterpriseIdentity[],
+  onLaunchAttack: (type: AttackType, targetId?: string, intensity?: number, identityId?: string) => void,
   onLaunchScenario: (scenario: ScenarioType) => void,
   onActivateDefense: () => void,
   onReset: () => void,
@@ -39,17 +46,30 @@ export function ControlPanel({
   onOpenManual: () => void,
   onUpdateNodeVulnerability: (nodeId: string, vuln: number) => void,
   onUpdateZoneVulnerability: (type: string, vuln: number) => void,
-  onHighlightNode?: (nodeId: string | null) => void
+  onHighlightNode?: (nodeId: string | null) => void,
+  spreadVelocity: number,
+  onSetSpreadVelocity: (velocity: number) => void,
+  isSimulating: boolean,
+  onToggleSimulation: () => void
 }) {
   const [selectedAttack, setSelectedAttack] = useState<AttackType | null>(null);
+  const [selectedZone, setSelectedZone] = useState<string | null>(null);
   const [isScanning, setIsScanning] = useState(false);
   const [intensity, setIntensity] = useState(0.8);
   const [vulnValue, setVulnValue] = useState(0.5);
   const [nodeVulnValue, setNodeVulnValue] = useState(0.5);
   const [targetNodeId, setTargetNodeId] = useState<string>('');
+  const [targetIdentityId, setTargetIdentityId] = useState<string>('');
   const [lastToggled, setLastToggled] = useState<string | null>(null);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [activeActions, setActiveActions] = useState<Record<string, boolean>>({});
+
+  // Environmental Tune - Live update
+  useEffect(() => {
+    if (selectedZone) {
+      onUpdateZoneVulnerability(selectedZone, vulnValue);
+    }
+  }, [vulnValue, selectedZone, onUpdateZoneVulnerability]);
 
   const triggerActionFeedback = (actionId: string) => {
     setActiveActions(prev => ({ ...prev, [actionId]: true }));
@@ -103,6 +123,8 @@ export function ControlPanel({
     { id: 'neural_isolation', label: 'Neural Isolation' },
     { id: 'heuristic_scanner', label: 'Heuristic Scan' },
     { id: 'auto_containment', label: 'Auto Contain' },
+    { id: 'traffic_scrubbing', label: 'Traffic Scrub' },
+    { id: 'quantum_hardening', label: 'Quantum Shield' },
   ];
 
   const scenarios: { id: ScenarioType; label: string }[] = [
@@ -179,7 +201,7 @@ export function ControlPanel({
           <button
             onClick={() => {
               if (selectedAttack) {
-                onLaunchAttack(selectedAttack, selectedNodeId, intensity);
+                onLaunchAttack(selectedAttack, targetNodeId || undefined, intensity, targetIdentityId || undefined);
                 triggerActionFeedback('strike');
               }
             }}
@@ -202,7 +224,7 @@ export function ControlPanel({
             )}
             <div className="flex items-center gap-3 relative z-10">
               <Zap size={16} fill="currentColor" />
-              <span>{selectedNodeId ? `Execute_Strike [${selectedNodeId}]` : 'Authorize_Strike'}</span>
+              <span>{targetIdentityId ? `Compromise Identity [${targetIdentityId}]` : selectedNodeId ? `Execute_Strike [${selectedNodeId}]` : 'Authorize_Strike'}</span>
             </div>
             <div className="text-[8px] font-mono opacity-60 tracking-[0.3em] mt-0.5">Quantum_Sign_Validated</div>
           </button>
@@ -224,23 +246,23 @@ export function ControlPanel({
                    key={module.id}
                    onClick={() => handleDefenseToggle(module.id)}
                    className={cn(
-                     "precision-button h-12 flex items-center justify-between group transition-all duration-300 relative overflow-hidden px-4",
+                     "precision-button h-10 flex items-center justify-between group transition-all duration-300 relative overflow-hidden px-3",
                      isActive
                        ? "border-accent-cyan/50 text-accent-cyan bg-accent-cyan/10"
                        : "text-text-tertiary",
                      isJustToggled && "border-white bg-white/10"
                    )}
                   >
-                    <div className="flex items-center gap-2.5 relative z-10">
+                    <div className="flex items-center gap-2 relative z-10">
                       {isActive ? (
-                        <ShieldCheck size={12} className="text-accent-cyan" />
+                        <ShieldCheck size={10} className="text-accent-cyan" />
                       ) : (
-                        <Shield size={12} className="text-text-tertiary/60" />
+                        <Shield size={10} className="text-text-tertiary/60" />
                       )}
-                      <span className="text-[10px] font-bold tracking-wider uppercase">{module.label}</span>
+                      <span className="text-[9px] font-bold tracking-wider uppercase">{module.label}</span>
                     </div>
                     <div className={cn(
-                      "w-1.5 h-1.5 rounded-full transition-all duration-500",
+                      "w-1 h-1 rounded-full transition-all duration-500",
                       isActive ? "bg-accent-cyan shadow-[0_0_10px_#00f2ff]" : "bg-text-tertiary/20"
                     )} />
                   </button>
@@ -253,13 +275,16 @@ export function ControlPanel({
         <section className="space-y-4">
            <div className="flex items-center justify-between">
               <span className="text-[9px] text-text-tertiary font-bold uppercase tracking-[0.2em]">03. Environmental_Tune</span>
+              <span className="text-[8px] font-mono text-accent-blue/60 uppercase">Manual_Override</span>
            </div>
            
            <div className="space-y-6 bg-panel/30 border border-border p-4 rounded-sm">
               <div className="space-y-4">
                  <div>
                     <div className="flex justify-between items-center mb-2">
-                       <span className="text-[9px] text-text-secondary font-bold uppercase tracking-wider">Regional_Flux</span>
+                       <span className="text-[9px] text-text-secondary font-bold uppercase tracking-wider">
+                         {selectedZone ? `Zone_Flux: ${selectedZone}` : 'Regional_Flux'}
+                       </span>
                        <span className="text-[11px] text-accent-blue font-mono font-bold">{(vulnValue * 100).toFixed(0)}%</span>
                     </div>
                     <input 
@@ -277,48 +302,91 @@ export function ControlPanel({
                      <button
                         key={z.type}
                         onClick={() => {
+                          setSelectedZone(z.type);
                           onUpdateZoneVulnerability(z.type, vulnValue);
                           triggerActionFeedback(`zone-${z.type}`);
                         }}
-                        className="precision-button h-9 text-[10px] lowercase italic font-mono"
+                        className={cn(
+                          "precision-button h-9 text-[10px] lowercase italic font-mono transition-all",
+                          selectedZone === z.type ? "border-accent-blue text-accent-blue bg-accent-blue/10 shadow-[0_0_10px_rgba(59,130,246,0.2)]" : "text-text-tertiary"
+                        )}
                        >
                          {z.label}
                        </button>
                     ))}
                  </div>
+                 {selectedZone && (
+                   <div className="text-[8px] font-mono text-accent-blue/60 text-center uppercase tracking-widest animate-pulse">
+                     Zone_Calibration_Applied
+                   </div>
+                 )}
               </div>
 
-              <div className="pt-4 border-t border-border/50 flex flex-col gap-3">
-                 <select 
-                    value={targetNodeId}
-                    onChange={(e) => handleNodeSelect(e.target.value)}
-                    className="w-full bg-void border border-border py-2 px-3 text-[10px] font-mono text-text-primary focus:outline-none focus:border-accent-cyan/50 uppercase"
-                  >
-                    {nodes.map(n => (
-                      <option key={n.id} value={n.id}>{n.label} [{n.id.slice(0, 6)}]</option>
-                    ))}
-                 </select>
-
-                 <div className="flex justify-between items-center px-1">
-                    <span className="text-[8px] text-text-tertiary font-bold uppercase tracking-widest">Selected_Node_Exposure</span>
-                    <span className="text-[11px] text-accent-cyan font-mono font-bold">{(nodeVulnValue * 100).toFixed(0)}%</span>
+                 <div className="pt-4 border-t border-border/50">
+                    <div className="flex justify-between items-center mb-2">
+                       <span className="text-[9px] text-text-secondary font-bold uppercase tracking-wider">Spread_Intensity</span>
+                       <span className="text-[11px] text-accent-cyan font-mono font-bold">{spreadVelocity?.toFixed(1)}x</span>
+                    </div>
+                    <input 
+                      type="range" 
+                      min="0.1" 
+                      max="3.0" 
+                      step="0.1" 
+                      value={spreadVelocity || 1.0} 
+                      onChange={(e) => onSetSpreadVelocity(parseFloat(e.target.value))}
+                      className="w-full h-1 bg-void rounded-lg appearance-none cursor-pointer accent-accent-cyan"
+                    />
                  </div>
-                 <input 
-                    type="range" 
-                    min="0.0" 
-                    max="1.0" 
-                    step="0.05" 
-                    value={nodeVulnValue} 
-                    onChange={(e) => {
-                      const val = parseFloat(e.target.value);
-                      setNodeVulnValue(val);
-                      onHighlightNode?.(targetNodeId);
-                    }}
-                    onBlur={() => onHighlightNode?.(null)}
-                    className="w-full h-1 bg-void rounded-lg appearance-none cursor-pointer accent-accent-cyan"
-                 />
 
-                 <div className="grid grid-cols-2 gap-2 mt-1">
+                  <div className="pt-6 border-t border-border/50 flex flex-col gap-3">
+                  <div className="space-y-1">
+                    <span className="text-[8px] text-text-tertiary font-bold uppercase tracking-widest pl-1">Network Target</span>
+                    <select 
+                      value={targetNodeId}
+                      onChange={(e) => handleNodeSelect(e.target.value)}
+                      className="w-full bg-void border border-border py-2 px-3 text-[10px] font-mono text-text-primary focus:outline-none focus:border-accent-cyan/50 uppercase"
+                    >
+                      <option value="">No Target</option>
+                      {nodes.map(n => (
+                        <option key={n.id} value={n.id}>{n.label} [{n.id.slice(0, 6)}]</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="space-y-1 mt-2">
+                    <span className="text-[8px] text-text-tertiary font-bold uppercase tracking-widest pl-1">Identity Target</span>
+                    <select 
+                      value={targetIdentityId}
+                      onChange={(e) => setTargetIdentityId(e.target.value)}
+                      className="w-full bg-void border border-border py-2 px-3 text-[10px] font-mono text-text-primary focus:outline-none focus:border-accent-cyan/50 uppercase"
+                    >
+                      <option value="">No Identity</option>
+                      {identities.map(i => (
+                        <option key={i.id} value={i.id}>{i.name} ({i.type})</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="flex justify-between items-center px-1 mt-2">
+                     <span className="text-[8px] text-text-tertiary font-bold uppercase tracking-widest">Selected_Node_Exposure</span>
+                     <span className="text-[11px] text-accent-cyan font-mono font-bold">{(nodeVulnValue * 100).toFixed(0)}%</span>
+                  </div>
+                  <input 
+                     type="range" 
+                     min="0.0" 
+                     max="1.0" 
+                     step="0.05" 
+                     value={nodeVulnValue} 
+                     onChange={(e) => {
+                       const val = parseFloat(e.target.value);
+                       setNodeVulnValue(val);
+                       onHighlightNode?.(targetNodeId);
+                     }}
+                     onBlur={() => onHighlightNode?.(null)}
+                     className="w-full h-1 bg-void rounded-lg appearance-none cursor-pointer accent-accent-cyan"
+                  />
+
+                   <div className="grid grid-cols-2 gap-2 mt-1">
                     <button
                       onClick={() => {
                         if (targetNodeId) {
@@ -346,10 +414,74 @@ export function ControlPanel({
            </div>
         </section>
 
-        {/* Section 4: Operational Presets */}
+        {/* Section 4: Emergency Protocols */}
         <section className="space-y-4">
            <div className="flex items-center justify-between">
-              <span className="text-[9px] text-text-tertiary font-bold uppercase tracking-[0.2em]">04. Field_Scenarios</span>
+              <span className="text-[9px] text-text-tertiary font-bold uppercase tracking-[0.2em]">04. Emergency_Protocols</span>
+              <span className="text-[8px] font-mono text-state-danger/60 uppercase">Auth: Level_3</span>
+           </div>
+           
+           <div className="grid grid-cols-2 gap-2">
+              <button
+                onClick={() => {
+                  onToggleSimulation();
+                  triggerActionFeedback('simulation-toggle');
+                }}
+                className={cn(
+                  "precision-button h-16 flex flex-col items-center justify-center gap-2 text-center p-2 group transition-all",
+                  isSimulating 
+                    ? "border-state-warning/30 text-state-warning hover:bg-state-warning/10" 
+                    : "border-state-safe/50 text-state-safe bg-state-safe/10 animate-pulse-precision"
+                )}
+              >
+                {isSimulating ? <ShieldAlert size={16} /> : <Zap size={16} />}
+                <div className="flex flex-col">
+                  <span className="text-[9px] font-bold tracking-tight">{isSimulating ? 'PAUSE_ENGINE' : 'RESUME_ENGINE'}</span>
+                  <span className="text-[7px] opacity-60 font-mono">{isSimulating ? 'Halt_Propagation' : 'Initiate_Cycles'}</span>
+                </div>
+              </button>
+
+              <button
+                onClick={() => {
+                  nodes.forEach(n => onUpdateNodeVulnerability(n.id, vulnValue));
+                  setSelectedZone(null);
+                  triggerActionFeedback('global-sync');
+                }}
+                className={cn(
+                  "precision-button h-16 flex flex-col items-center justify-center gap-2 text-center p-2 border-accent-blue/30 text-accent-blue hover:bg-accent-blue/10 transition-all",
+                  activeActions['global-sync'] && "bg-accent-blue text-white"
+                )}
+              >
+                <Activity size={16} />
+                <div className="flex flex-col">
+                  <span className="text-[9px] font-bold tracking-tight">GLOBAL_SYNC</span>
+                  <span className="text-[7px] opacity-60 font-mono">Sync_All_Nodes</span>
+                </div>
+              </button>
+
+              <button
+                onClick={() => {
+                  onReset();
+                  triggerActionFeedback('emergency-reset');
+                }}
+                className={cn(
+                  "precision-button h-16 flex flex-col items-center justify-center gap-2 text-center p-2 border-state-danger/50 text-state-danger hover:bg-state-danger/10 group transition-all",
+                  activeActions['emergency-reset'] && "bg-state-danger text-white col-span-2"
+                )}
+              >
+                <RotateCcw size={16} className="group-hover:rotate-[-45deg] transition-transform" />
+                <div className="flex flex-col text-center">
+                  <span className="text-[9px] font-bold tracking-tight">SYSTEM_RESET</span>
+                  <span className="text-[7px] opacity-60 font-mono">Flush_Neural_Buffer</span>
+                </div>
+              </button>
+           </div>
+        </section>
+
+        {/* Section 5: Operational Presets */}
+        <section className="space-y-4">
+           <div className="flex items-center justify-between">
+              <span className="text-[9px] text-text-tertiary font-bold uppercase tracking-[0.2em]">05. Field_Scenarios</span>
            </div>
            
            <div className="grid grid-cols-3 gap-2">

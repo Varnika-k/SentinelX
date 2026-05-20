@@ -46,7 +46,9 @@ export default function App() {
     updateIncidentStatus,
     addIncidentNote,
     applyDefenseRecommendation,
-    dismissDefenseRecommendation
+    dismissDefenseRecommendation,
+    setSpreadVelocity,
+    toggleSimulation
   } = useSimulation();
 
   // The Telemetry Store (Listens to Bus - Source of Truth for UI)
@@ -88,7 +90,9 @@ export default function App() {
               updateIncidentStatus,
               addIncidentNote,
               applyDefenseRecommendation,
-              dismissDefenseRecommendation
+              dismissDefenseRecommendation,
+              setSpreadVelocity,
+              toggleSimulation
             }}
             selectedNode={selectedNode}
             onSelectNode={setSelectedNode}

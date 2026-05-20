@@ -11,8 +11,9 @@ class Logger {
 
   constructor() {
     // In production we might want to default to 'info'
-    if (process.env.LOG_LEVEL) {
-      this.level = process.env.LOG_LEVEL as LogLevel;
+    const safeEnv = typeof process !== 'undefined' && typeof process.env !== 'undefined' ? process.env : {} as Record<string, string>;
+    if (safeEnv.LOG_LEVEL) {
+      this.level = safeEnv.LOG_LEVEL as LogLevel;
     }
   }
 

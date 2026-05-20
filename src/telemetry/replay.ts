@@ -20,8 +20,11 @@ export class ReplayEngine {
   private static speed = 500;
 
   static load(history: TelemetryEnvelope[]) {
+    const isInitialLoad = this.history.length === 0;
     this.history = history;
-    this.index = 0;
+    if (isInitialLoad) {
+      this.index = 0;
+    }
     this.broadcastStatus();
   }
 
@@ -62,7 +65,13 @@ export class ReplayEngine {
   static step() {
     if (this.index < this.history.length) {
       const env = this.history[this.index];
-      telemetryBus.publish(env.topic, env.payload);
+      // Clone payload and add replay marker to avoid loops
+      const replayedPayload = { 
+        ...env.payload, 
+        _isReplay: true,
+        source: 'replay_engine' 
+      };
+      telemetryBus.publish(env.topic, replayedPayload);
       this.index++;
       this.broadcastStatus();
     }
@@ -80,14 +89,19 @@ export class ReplayEngine {
       source: 'replay_engine'
     });
 
-    this.index = Math.max(0, Math.min(index, this.history.length));
+    const targetIndex = Math.max(0, Math.min(index, this.history.length));
+    this.index = 0;
     
-    // Fast-forward to the target index without broadcasting to the bus every time?
-    // Actually, the Store needs to hear them to rebuild state.
-    // If we want it "instant", we should publish them all at once or in a tight loop.
-    for (let i = 0; i < this.index; i++) {
+    // Fast-forward to the target index
+    for (let i = 0; i < targetIndex; i++) {
       const env = this.history[i];
-      telemetryBus.publish(env.topic, env.payload);
+      const replayedPayload = { 
+        ...env.payload, 
+        _isReplay: true,
+        source: 'replay_engine' 
+      };
+      telemetryBus.publish(env.topic, replayedPayload);
+      this.index++;
     }
 
     this.broadcastStatus();

@@ -4,17 +4,19 @@ import { Brain, ShieldAlert, Zap, Activity, Info, ChevronRight, Loader2, Sparkle
 import { aiEngine } from '../../lib/ai-engine';
 import { GraphIntelligenceEngine } from '../../lib/graph-intelligence';
 import { AIAnalysisResponse } from '../../types/ai';
-import { NetworkNode } from '../../types/network';
+import { NetworkNode, NetworkLink } from '../../types/network';
+import { CyberKnowledgeBase } from '../../types/intelligence';
 import { cn } from '../../lib/utils';
 
 interface Props {
   selectedNode: NetworkNode | null;
   allNodes: NetworkNode[];
-  allLinks: any[];
+  allLinks: NetworkLink[];
+  knowledgeBase: CyberKnowledgeBase;
   defenseRecommendations?: any[];
 }
 
-export function AIIntelligencePanel({ selectedNode, allNodes, allLinks, defenseRecommendations }: Props) {
+export function AIIntelligencePanel({ selectedNode, allNodes, allLinks, knowledgeBase, defenseRecommendations }: Props) {
   const [analysis, setAnalysis] = useState<AIAnalysisResponse | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [streamedText, setStreamedText] = useState("");
@@ -42,6 +44,7 @@ export function AIIntelligencePanel({ selectedNode, allNodes, allLinks, defenseR
           links: allLinks,
           targetNode: selectedNode || undefined,
           graphAnalytics: graphReport,
+          knowledgeBase, // Pass long-term intelligence
           defenseRecommendations: allNodes.length > 0 ? [] : [], 
           recentActivity: [] 
         }
@@ -55,7 +58,8 @@ export function AIIntelligencePanel({ selectedNode, allNodes, allLinks, defenseR
            nodes: allNodes,
            links: allLinks,
            targetNode: selectedNode || undefined,
-           graphAnalytics: graphReport
+           graphAnalytics: graphReport,
+           knowledgeBase
          }
       })) {
         setStreamedText(prev => prev + chunk);

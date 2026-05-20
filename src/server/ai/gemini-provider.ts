@@ -21,7 +21,7 @@ export class GeminiProvider implements AIProvider {
     const prompt = this.buildPrompt(request);
     
     const response = await this.client.models.generateContent({
-      model: "gemini-1.5-flash",
+      model: "gemini-3-flash-preview",
       contents: prompt,
       config: {
         responseMimeType: "application/json",
@@ -51,7 +51,7 @@ export class GeminiProvider implements AIProvider {
     const prompt = this.buildPrompt(request) + "\n\nProvide the analysis in a structured operational format. Be concise and technical.";
     
     const result = await this.client.models.generateContentStream({
-      model: "gemini-1.5-flash",
+      model: "gemini-3-flash-preview",
       contents: prompt,
     });
 
