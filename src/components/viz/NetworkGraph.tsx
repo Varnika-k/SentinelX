@@ -33,6 +33,8 @@ export function NetworkGraph({
   highlightedNodeId,
   highlightedPaths,
   showHeatmap = false,
+  showSegmentation = false,
+  showCommunicationInstability = false,
   visualSettings = {
     intensity: 1,
     speed: 1,
@@ -48,6 +50,8 @@ export function NetworkGraph({
   highlightedNodeId?: string | null,
   highlightedPaths?: string[][],
   showHeatmap?: boolean,
+  showSegmentation?: boolean,
+  showCommunicationInstability?: boolean,
   visualSettings?: VisualSettings
 }) {
   const svgRef = useRef<SVGSVGElement>(null);
@@ -229,7 +233,10 @@ export function NetworkGraph({
               id={link.id}
               source={link.source}
               target={link.target}
+              traffic={link.traffic}
+              riskWeight={link.riskWeight}
               showHeatmap={showHeatmap}
+              showCommunicationInstability={showCommunicationInstability}
               visualSettings={visualSettings}
             />
           ))}
@@ -270,16 +277,24 @@ export function NetworkGraph({
 
           {/* Nodes */}
           {simulationNodes.map(node => (
-            <GraphNode 
-              key={node.id}
-              node={node}
-              isSelected={selectedNodeId === node.id}
-              isHighlighted={highlightedNodeId === node.id}
-              onNodeClick={onNodeClick}
-              onMouseEnter={handleMouseEnter}
-              onMouseLeave={handleMouseLeave}
-              visualSettings={visualSettings}
-            />
+            <g 
+              key={node.id} 
+              className={cn(
+                "transition-all duration-1000",
+                (node as any).isDimmed ? "opacity-15 pointer-events-none filter blur-[1px]" : "opacity-100"
+              )}
+            >
+              <GraphNode 
+                node={node}
+                isSelected={selectedNodeId === node.id}
+                isHighlighted={highlightedNodeId === node.id}
+                onNodeClick={onNodeClick}
+                onMouseEnter={handleMouseEnter}
+                onMouseLeave={handleMouseLeave}
+                showSegmentation={showSegmentation}
+                visualSettings={visualSettings}
+              />
+            </g>
           ))}
         </g>
       </svg>

@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Brain, 
@@ -12,7 +12,13 @@ import {
   Layers,
   ChevronRight,
   Clock,
-  TrendingUp
+  TrendingUp,
+  Globe,
+  Database,
+  Search,
+  Activity,
+  Shield,
+  Send
 } from 'lucide-react';
 import { SimulationState } from '../../types/simulation';
 import { AttackCampaign, MITREStage } from '../../types/intelligence';
@@ -23,8 +29,69 @@ interface IntelligenceHubProps {
 }
 
 export function IntelligenceHub({ state }: IntelligenceHubProps) {
-  const [activeTab, setActiveTab] = useState<'campaigns' | 'actors' | 'baselines'>('campaigns');
+  const [activeTab, setActiveTab] = useState<'campaigns' | 'actors' | 'baselines' | 'cloud_intel'>('campaigns');
   const [selectedCampaignId, setSelectedCampaignId] = useState<string | null>(null);
+
+  // Shodan & VT UI states
+  const [shodanQueryIp, setShodanQueryIp] = useState('104.244.42.1');
+  const [shodanResult, setShodanResult] = useState<any>(null);
+  const [shodanLoading, setShodanLoading] = useState(false);
+
+  const [vtQueryTarget, setVtQueryTarget] = useState('23.22.201.12');
+  const [vtResult, setVtResult] = useState<any>(null);
+  const [vtLoading, setVtLoading] = useState(false);
+
+  const [cloudTrailLogs, setCloudTrailLogs] = useState<any[]>([]);
+  const [logsLoading, setLogsLoading] = useState(false);
+
+  useEffect(() => {
+    if (activeTab === 'cloud_intel' && cloudTrailLogs.length === 0) {
+      loadAWSCloudTrail();
+    }
+  }, [activeTab]);
+
+  const loadAWSCloudTrail = async () => {
+    setLogsLoading(true);
+    try {
+      const res = await fetch('/api/v1/cloud/aws');
+      const data = await res.json();
+      if (Array.isArray(data)) {
+        setCloudTrailLogs(data);
+      }
+    } catch (e) {
+      console.error('Failed to load CloudTrail logs', e);
+    } finally {
+      setLogsLoading(false);
+    }
+  };
+
+  const handleQueryShodan = async () => {
+    setShodanLoading(true);
+    try {
+      const res = await fetch(`/api/v1/cloud/shodan?ip=${shodanQueryIp}`);
+      const data = await res.json();
+      setShodanResult(data);
+    } catch (e) {
+      console.error(e);
+      setShodanResult({ error: 'Query failed' });
+    } finally {
+      setShodanLoading(false);
+    }
+  };
+
+  const handleQueryVT = async () => {
+    setVtLoading(true);
+    try {
+      const res = await fetch(`/api/v1/cloud/virustotal?target=${vtQueryTarget}`);
+      const data = await res.json();
+      setVtResult(data);
+    } catch (e) {
+      console.error(e);
+      setVtResult({ error: 'Query failed' });
+    } finally {
+      setVtLoading(false);
+    }
+  };
 
   const campaigns = state.knowledgeBase.campaigns;
   const selectedCampaign = useMemo(() => 
@@ -51,6 +118,7 @@ export function IntelligenceHub({ state }: IntelligenceHubProps) {
         <TabButton active={activeTab === 'campaigns'} onClick={() => setActiveTab('campaigns')} icon={Target} label="CAMPAIGNS" />
         <TabButton active={activeTab === 'actors'} onClick={() => setActiveTab('actors')} icon={Fingerprint} label="ACTORS" />
         <TabButton active={activeTab === 'baselines'} onClick={() => setActiveTab('baselines')} icon={Layers} label="BASELINES" />
+        <TabButton active={activeTab === 'cloud_intel'} onClick={() => setActiveTab('cloud_intel')} icon={Globe} label="CLOUD" />
       </div>
 
       <div className="flex-1 overflow-y-auto custom-scrollbar p-4">
@@ -174,6 +242,141 @@ export function IntelligenceHub({ state }: IntelligenceHubProps) {
                 <h4 className="text-[9px] font-bold text-text-secondary uppercase tracking-[0.2em] px-1">Infrastructure drift alerts</h4>
                 <DriftAlert node="srv-1" message="Unexpected egress to 0xA4F2 detected" severity="high" />
                 <DriftAlert node="db-1" message="IAM pattern variance: Service Agent usage spike" severity="medium" />
+              </div>
+            </motion.div>
+          )}
+
+          {activeTab === 'cloud_intel' && (
+            <motion.div 
+              key="cloud_intel"
+              initial={{ opacity: 0, x: -10 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: 10 }}
+              className="space-y-5"
+            >
+              {/* Managed Streaming Bus Stats */}
+              <div className="p-3 bg-void/50 border border-white/5 rounded-lg space-y-2">
+                <div className="flex items-center gap-1.5 justify-between">
+                  <div className="flex items-center gap-1.5">
+                    <Activity size={12} className="text-accent-cyan animate-pulse" />
+                    <span className="text-[9px] font-bold tracking-widest text-white/80 uppercase">TACTICAL STREAM STATUS</span>
+                  </div>
+                  <span className="text-[8px] font-mono font-bold text-state-safe">UPSTASH REDIS ACTIVE</span>
+                </div>
+                <div className="grid grid-cols-3 gap-1 pt-1">
+                  <div className="p-1.5 bg-black/30 border border-white/5 rounded">
+                    <span className="block text-[7px] text-white/40">CONN POOL</span>
+                    <span className="text-[10px] font-mono text-white/90">NEON SQL</span>
+                  </div>
+                  <div className="p-1.5 bg-black/30 border border-white/5 rounded">
+                    <span className="block text-[7px] text-white/40">THROTTLE</span>
+                    <span className="text-[10px] font-mono text-white/90">0.05s TICK</span>
+                  </div>
+                  <div className="p-1.5 bg-black/30 border border-white/5 rounded">
+                    <span className="block text-[7px] text-white/40">BATCH ENGINE</span>
+                    <span className="text-[10px] font-mono text-accent-cyan">35 EV/FLUSH</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Shodan Scan Tool */}
+              <div className="p-3 bg-void/30 border border-white/5 rounded-lg space-y-3">
+                <div className="flex items-center gap-1.5">
+                  <Globe size={12} className="text-accent-cyan" />
+                  <span className="text-[9px] font-bold text-white/80 uppercase tracking-widest">SHODAN RECON TARGET</span>
+                </div>
+                <div className="flex gap-1">
+                  <input 
+                    type="text" 
+                    value={shodanQueryIp} 
+                    onChange={(e) => setShodanQueryIp(e.target.value)}
+                    className="flex-1 bg-black/40 border border-white/10 rounded px-2 py-1 text-xs font-mono text-white/90 outline-none focus:border-accent-cyan/50" 
+                  />
+                  <button 
+                    onClick={handleQueryShodan}
+                    disabled={shodanLoading}
+                    className="px-3 py-1 bg-accent-cyan/10 border border-accent-cyan/30 rounded text-[10px] font-bold text-accent-cyan hover:bg-accent-cyan/20 transition-all disabled:opacity-45"
+                  >
+                    {shodanLoading ? 'SCANNING...' : 'SCAN'}
+                  </button>
+                </div>
+                {shodanResult && (
+                  <div className="p-2 bg-black/40 border border-white/5 rounded text-[9px] font-mono text-white/70 space-y-1">
+                    <div className="text-accent-cyan font-bold uppercase tracking-wider">{shodanResult.source || 'SHODAN RESULTS'}</div>
+                    <p className="text-[10px] leading-relaxed text-white/95">{shodanResult.message}</p>
+                    {shodanResult.payload && (
+                      <div className="grid grid-cols-2 gap-1 pt-1 border-t border-white/5 text-[8px] opacity-60">
+                        <div>ISP: {shodanResult.payload.isp}</div>
+                        <div>Target Ports: {shodanResult.payload.ports?.join(', ')}</div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* VirusTotal Reputation Scanner */}
+              <div className="p-3 bg-void/30 border border-white/5 rounded-lg space-y-3">
+                <div className="flex items-center gap-1.5">
+                  <Shield size={12} className="text-state-warning" />
+                  <span className="text-[9px] font-bold text-white/80 uppercase tracking-widest">VIRUSTOTAL ADVERSARY INTEL</span>
+                </div>
+                <div className="flex gap-1">
+                  <input 
+                    type="text" 
+                    value={vtQueryTarget} 
+                    onChange={(e) => setVtQueryTarget(e.target.value)}
+                    className="flex-1 bg-black/40 border border-white/10 rounded px-2 py-1 text-xs font-mono text-white/90 outline-none focus:border-state-warning/50" 
+                  />
+                  <button 
+                    onClick={handleQueryVT}
+                    disabled={vtLoading}
+                    className="px-3 py-1 bg-state-warning/10 border border-state-warning/30 rounded text-[10px] font-bold text-state-warning hover:bg-state-warning/20 transition-all disabled:opacity-45"
+                  >
+                    {vtLoading ? 'SCANNING...' : 'SCAN'}
+                  </button>
+                </div>
+                {vtResult && (
+                  <div className="p-2 bg-black/40 border border-white/5 rounded text-[9px] font-mono text-white/70 space-y-1">
+                    <div className="text-state-warning font-bold uppercase tracking-wider">{vtResult.source || 'VIRUSTOTAL'}</div>
+                    <p className="text-[10px] leading-relaxed text-white/95">{vtResult.message}</p>
+                    {vtResult.payload && (
+                      <div className="pt-1 border-t border-white/5 text-[8px] opacity-60 flex justify-between">
+                        <span>DETECTIONS: {vtResult.payload.positives} / {vtResult.payload.total}</span>
+                        <span className="italic">{vtResult.payload._integration}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* AWS CloudTrail logs feed */}
+              <div className="p-3 bg-void/30 border border-white/5 rounded-lg space-y-2">
+                <div className="flex justify-between items-center">
+                  <div className="flex items-center gap-1.5">
+                    <Database size={12} className="text-white/50" />
+                    <span className="text-[9px] font-bold text-white/80 uppercase tracking-widest">AWS CLOUDTRAIL AUDIT SYNC</span>
+                  </div>
+                  <button 
+                    onClick={loadAWSCloudTrail} 
+                    className="text-[8px] text-accent-cyan hover:underline uppercase"
+                  >
+                    Refresh
+                  </button>
+                </div>
+                <div className="space-y-1.5 max-h-44 overflow-y-auto custom-scrollbar">
+                  {logsLoading ? (
+                    <div className="text-[9px] font-mono opacity-50 py-3 text-center">Syncing AWS events...</div>
+                  ) : cloudTrailLogs.map((log: any, idx: number) => (
+                    <div key={idx} className="p-1.5 bg-black/20 border-l border-white/10 rounded-r text-[9px] font-mono text-white/60">
+                      <div className="flex justify-between font-bold text-[8px] text-white/80">
+                        <span className="text-accent-cyan uppercase">{log.payload?.eventName || 'Audit Log'}</span>
+                        <span>{log.payload?.awsRegion}</span>
+                      </div>
+                      <p className="text-[9px] text-white/50 leading-tight my-0.5">{log.message}</p>
+                      <div className="text-[7px] text-white/30 truncate">Target ARN: {log.payload?.userIdentity?.arn || 'N/A'}</div>
+                    </div>
+                  ))}
+                </div>
               </div>
             </motion.div>
           )}

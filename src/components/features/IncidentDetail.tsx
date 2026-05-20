@@ -16,7 +16,13 @@ import {
   AlertTriangle,
   ArrowRight,
   CheckCircle2,
-  Briefcase
+  Briefcase,
+  Play,
+  RotateCw,
+  UserPlus,
+  Sliders,
+  CheckCircle,
+  HelpCircle
 } from 'lucide-react';
 import { Incident, IncidentStatus } from '../../types/incident';
 import { cn } from '../../lib/utils';
@@ -31,6 +37,9 @@ interface Props {
 export function IncidentDetail({ incident, onClose, onUpdateStatus, onAddNote }: Props) {
   const [note, setNote] = useState("");
   const [showTimeline, setShowTimeline] = useState(true);
+  const [assignedTeam, setAssignedTeam] = useState("Autonomous Orchestrator");
+  const [activePlaybookStep, setActivePlaybookStep] = useState(0);
+  const [playbookRunStatus, setPlaybookRunStatus] = useState<'idle' | 'running' | 'completed'>('idle');
 
   if (!incident) return null;
 
@@ -43,6 +52,45 @@ export function IncidentDetail({ incident, onClose, onUpdateStatus, onAddNote }:
   };
 
   const statusOptions: IncidentStatus[] = ['detected', 'investigating', 'escalated', 'contained', 'resolved'];
+
+  // Incident response playbooks based on Attack Type
+  const isDdos = incident.attackType?.toLowerCase().includes('ddos');
+  const isRansom = incident.attackType?.toLowerCase().includes('ransom');
+
+  const playbookSteps = isDdos ? [
+    { title: "Edge Isolation", desc: "Isolate target gateway interfaces within SD-WAN.", activeLabel: "Isolating...", state: 'completed' },
+    { title: "BGP Rate-Limiting", desc: "Apply scrubbing filter and rate-limit peer vectors.", activeLabel: "Filtering...", state: 'running' },
+    { title: "Rotate Edge Tokens", desc: "Revoke and issue replacement proxy secrets.", activeLabel: "Cycling keys...", state: 'pending' },
+    { title: "Traffic Restabilization", desc: "Verify ingress health parameters and telemetry feed.", activeLabel: "Restoring...", state: 'pending' }
+  ] : isRansom ? [
+    { title: "Host Isolation", desc: "Quarantine infected instances from localized LAN.", activeLabel: "Mitigating...", state: 'completed' },
+    { title: "Revoke Dev IAM", desc: "Suspend active access keys for compromized services.", activeLabel: "Revoking...", state: 'completed' },
+    { title: "Trigger Snapshot Recovery", desc: "Rollback node storage onto secure system backup.", activeLabel: "Restoring Volume...", state: 'running' },
+    { title: "Credential Cycle", desc: "Rotate domain accounts and local root password matrices.", activeLabel: "Cycling...", state: 'pending' }
+  ] : [
+    { title: "Autonomous Blast Control", desc: "Establish micro-segmentation block rules around nodes.", activeLabel: "Segmenting...", state: 'completed' },
+    { title: "IAM Lockout", desc: "Temporarily invalidate session headers on adjacent links.", activeLabel: "Locking...", state: 'running' },
+    { title: "Telemetry Validation", desc: "Initiate full-spectrum telemetry audit log streaming.", activeLabel: "Validating...", state: 'pending' }
+  ];
+
+  const handleTriggerPlaybook = () => {
+    if (playbookRunStatus === 'completed') {
+      setActivePlaybookStep(0);
+    }
+    setPlaybookRunStatus('running');
+    const interval = setInterval(() => {
+      setActivePlaybookStep(prev => {
+        if (prev >= playbookSteps.length - 1) {
+          clearInterval(interval);
+          setPlaybookRunStatus('completed');
+          // Automatically transition incident status to contained
+          onUpdateStatus(incident.id, 'contained');
+          return playbookSteps.length - 1;
+        }
+        return prev + 1;
+      });
+    }, 1200);
+  };
 
   return (
     <div className="flex flex-col h-full bg-void/90 border-l border-border-primary/50 backdrop-blur-xl shadow-[-20px_0_40px_rgba(0,0,0,0.8)] relative">
@@ -60,6 +108,11 @@ export function IncidentDetail({ incident, onClose, onUpdateStatus, onAddNote }:
               )}>
                 {incident.severity}_Priority
               </span>
+              {incident.attackType && (
+                <span className="px-2 py-0.5 rounded-[2px] bg-white/5 border border-white/10 text-[8px] font-mono text-text-secondary uppercase">
+                  {incident.attackType}
+                </span>
+              )}
             </div>
             <h2 className="text-xl font-heading font-black tracking-tight uppercase leading-tight italic max-w-md">
               {incident.title}
@@ -114,19 +167,116 @@ export function IncidentDetail({ incident, onClose, onUpdateStatus, onAddNote }:
       </div>
 
       <div className="flex-1 overflow-y-auto custom-scrollbar p-6 space-y-8">
-        {/* Workflow State */}
+        
+        {/* INTERACTIVE PLAYBOOK WORKFLOW */}
         <section className="space-y-4">
-          <div className="flex items-center gap-2">
-            <Briefcase className="w-4 h-4 text-accent-cyan" />
-            <h3 className="text-[10px] font-heading font-black tracking-widest uppercase">Lifecycle_Operation</h3>
+          <div className="flex items-center justify-between border-b border-border-primary/20 pb-2">
+            <div className="flex items-center gap-2">
+              <Sliders className="w-4 h-4 text-accent-cyan animate-pulse" />
+              <h3 className="text-[10px] font-heading font-black tracking-widest uppercase">Autonomous_Remediation_Playbook</h3>
+            </div>
+            <button 
+              onClick={handleTriggerPlaybook}
+              disabled={playbookRunStatus === 'running'}
+              className={cn(
+                "px-2.5 py-1 rounded text-[8px] font-mono font-bold tracking-widest flex items-center gap-1.5 border uppercase transition-colors",
+                playbookRunStatus === 'running' 
+                  ? "bg-state-warning/10 border-state-warning/30 text-state-warning cursor-not-allowed"
+                  : playbookRunStatus === 'completed'
+                  ? "bg-accent-cyan/10 border-accent-cyan/40 text-accent-cyan hover:bg-accent-cyan/20"
+                  : "bg-void border-border-primary/30 text-white hover:border-accent-cyan/50"
+              )}
+            >
+              <Play size={8} />
+              {playbookRunStatus === 'running' ? "Running Automation..." : playbookRunStatus === 'completed' ? "Rerun Playbook" : "Execute Mitigation"}
+            </button>
           </div>
-          <div className="flex items-center gap-2">
-            {statusOptions.map((s, idx) => (
-              <React.Fragment key={s}>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {playbookSteps.map((step, idx) => {
+              const isDone = playbookRunStatus === 'completed' || (playbookRunStatus === 'running' && idx < activePlaybookStep);
+              const isCurrent = playbookRunStatus === 'running' && idx === activePlaybookStep;
+              const isQueued = !playbookRunStatus || playbookRunStatus === 'idle' || (playbookRunStatus === 'running' && idx > activePlaybookStep);
+
+              return (
+                <div 
+                  key={idx} 
+                  className={cn(
+                    "p-3 rounded-sm border transition-all text-left relative overflow-hidden flex flex-col justify-between",
+                    isDone ? "bg-accent-cyan/5 border-accent-cyan/30" : 
+                    isCurrent ? "bg-state-warning/5 border-state-warning/45 shadow-[0_0_10px_rgba(245,158,11,0.1)]" : 
+                    "bg-void border-border-primary/10 opacity-75"
+                  )}
+                >
+                  <div className="flex justify-between items-start gap-2">
+                    <div>
+                      <span className="text-[7px] font-mono text-text-tertiary">STEP_0{idx + 1}</span>
+                      <h4 className="text-[10px] font-bold text-white uppercase mt-0.5">{step.title}</h4>
+                    </div>
+                    {isDone ? (
+                      <CheckCircle size={10} className="text-accent-cyan" />
+                    ) : isCurrent ? (
+                      <RotateCw size={10} className="text-state-warning animate-spin" />
+                    ) : (
+                      <div className="w-2.5 h-2.5 rounded-full border border-border-primary/30" />
+                    )}
+                  </div>
+                  <p className="text-[9px] text-text-secondary mt-1.5 leading-normal">{step.desc}</p>
+                  
+                  {isCurrent && (
+                    <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-void">
+                      <motion.div 
+                        initial={{ width: 0 }}
+                        animate={{ width: "100%" }}
+                        transition={{ duration: 1.2, ease: "linear" }}
+                        className="h-full bg-state-warning"
+                      />
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </section>
+
+        {/* Dynamic Assignment & Response Unit Escalation */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <section className="space-y-3">
+            <div className="flex items-center gap-2">
+              <UserPlus className="w-4 h-4 text-accent-cyan" />
+              <h3 className="text-[10px] font-heading font-black tracking-widest uppercase font-bold">Escalate_Response_Unit</h3>
+            </div>
+            <div className="space-y-2">
+              <div className="text-[8px] font-mono text-text-tertiary uppercase">Dynamic Tactical Assignee</div>
+              <select 
+                value={assignedTeam}
+                onChange={(e) => setAssignedTeam(e.target.value)}
+                className="w-full bg-void/90 border border-border-primary/30 rounded px-2.5 py-1.5 text-[10px] font-mono text-white outline-none focus:border-accent-cyan select-custom"
+              >
+                <option value="Autonomous Orchestrator">Autonomous Orchestrator</option>
+                <option value="Global Threat Intel Tier-3">Global Threat Intel Tier-3</option>
+                <option value="Emergency Host Operations Agency">Emergency Host Operations Agency</option>
+                <option value="Tier-4 DevSecOps Architect">Tier-4 DevSecOps Architect</option>
+              </select>
+              <div className="p-2.5 bg-background-light/5 border border-border-primary/10 rounded text-[9px] text-text-secondary leading-normal">
+                Direct escalated control maps real-time updates and notifications back with containment tokens.
+              </div>
+            </div>
+          </section>
+
+          {/* Lifecycle operation */}
+          <section className="space-y-3">
+            <div className="flex items-center gap-2">
+              <Briefcase className="w-4 h-4 text-accent-cyan" />
+              <h3 className="text-[10px] font-heading font-black tracking-widest uppercase">Lifecycle_Operation</h3>
+            </div>
+            <div className="grid grid-cols-3 gap-1.5">
+              {statusOptions.map((s) => (
                 <button
+                  key={s}
                   onClick={() => onUpdateStatus(incident.id, s)}
                   className={cn(
-                    "flex-1 px-3 py-2 rounded text-[9px] font-heading font-bold uppercase transition-all border break-words text-center",
+                    "px-1.5 py-2 rounded text-[8.5px] font-heading font-bold uppercase transition-all border text-center whitespace-nowrap",
                     incident.status === s 
                       ? "bg-accent-cyan text-void border-accent-cyan shadow-[0_0_15px_rgba(0,255,209,0.2)]" 
                       : "bg-void text-text-secondary border-border-primary/20 hover:border-accent-cyan/30"
@@ -134,11 +284,10 @@ export function IncidentDetail({ incident, onClose, onUpdateStatus, onAddNote }:
                 >
                   {s}
                 </button>
-                {idx < statusOptions.length - 1 && <ChevronRight className="w-3 h-3 opacity-20" />}
-              </React.Fragment>
-            ))}
-          </div>
-        </section>
+              ))}
+            </div>
+          </section>
+        </div>
 
         {/* Attack Chain Reconstruction */}
         <section className="space-y-4">
@@ -169,7 +318,7 @@ export function IncidentDetail({ incident, onClose, onUpdateStatus, onAddNote }:
           </div>
         </section>
 
-        <div className="grid grid-cols-2 gap-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
           {/* Timeline */}
           <section className="space-y-4">
             <div className="flex items-center justify-between">
@@ -221,7 +370,7 @@ export function IncidentDetail({ incident, onClose, onUpdateStatus, onAddNote }:
               </div>
               <div className="p-4 bg-state-warning/5 border border-state-warning/20 rounded relative overflow-hidden group/ai">
                 <p className="text-[10px] leading-relaxed text-state-warning/80 italic font-mono lowercase">
-                  "Anomaly indicates a high-velocity automated attack pattern. Recommended course: Immediate isolation of gateway-1 followed by heuristic reset on server-1."
+                  "Anomaly indicates a high-velocity automated attack pattern. Recommended course: Immediate isolation of target gateway nodes followed by credentials rotation across related endpoints."
                 </p>
                 <div className="absolute inset-0 pointer-events-none bg-gradient-to-r from-transparent via-state-warning/5 to-transparent -translate-x-full group-hover/ai:translate-x-full transition-transform duration-1000" />
               </div>
@@ -272,9 +421,10 @@ export function IncidentDetail({ incident, onClose, onUpdateStatus, onAddNote }:
         </div>
         
         <div className="text-[8px] font-mono text-text-secondary uppercase">
-          Assigned_To: SYSTEM_CORE
+          Assigned_To: {assignedTeam.toUpperCase()}
         </div>
       </div>
     </div>
   );
 }
+

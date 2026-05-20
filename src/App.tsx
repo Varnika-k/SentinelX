@@ -31,6 +31,9 @@ export default function App() {
   const [showManual, setShowManual] = useState(false);
   const [showDiagnostics, setShowDiagnostics] = useState(true);
   
+  // The Telemetry Store (Listens to Bus - Source of Truth for UI)
+  const { state: telemetryState, isOnline } = useTelemetryStore();
+  
   // The Simulation Controller (Emits to Bus)
   const { 
     state: simState, 
@@ -49,10 +52,7 @@ export default function App() {
     dismissDefenseRecommendation,
     setSpreadVelocity,
     toggleSimulation
-  } = useSimulation();
-
-  // The Telemetry Store (Listens to Bus - Source of Truth for UI)
-  const { state: telemetryState, isOnline } = useTelemetryStore();
+  } = useSimulation(telemetryState);
 
   const [selectedNode, setSelectedNode] = useState<NetworkNode | null>(null);
   const [showHeatmap, setShowHeatmap] = useState(false);

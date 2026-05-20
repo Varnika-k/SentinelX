@@ -281,6 +281,10 @@ export function NodeDetails({
                         { label: 'CRITICALITY', value: `${(node.criticality * 100).toFixed(0)}%`, color: 'text-accent-blue' },
                         { label: 'EXPOSURE', value: `${(node.vulnerability * 100).toFixed(0)}%`, color: 'text-state-warning' },
                         { label: 'THREAT_LVL', value: node.threatScore.toFixed(0), color: 'text-state-danger' },
+                        { label: 'DEGRADATION', value: `${node.degradation || 0}%`, color: (node.degradation && node.degradation > 40) ? 'text-state-danger' : 'text-slate-400' },
+                        { label: 'NET_LATENCY', value: `${node.latency || 12}ms`, color: (node.latency && node.latency > 100) ? 'text-state-warning' : 'text-accent-cyan' },
+                        { label: 'MONITORING', value: `${node.monitoringLevel || 10}%`, color: 'text-emerald-400' },
+                        { label: 'KEYS_ROTATED', value: node.credentialsRotated ? 'SUCCESS' : 'PENDING', color: node.credentialsRotated ? 'text-emerald-400' : 'text-slate-500' },
                         { label: 'LAST_SYN', value: node.lastActivity ? (typeof node.lastActivity === 'string' ? node.lastActivity : (node.lastActivity as Date).toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit' })) : 'N/A', color: 'text-white/60' },
                       ].map((param, i) => (
                         <div key={i} className="p-3 bg-surface/50 border border-border/50 rounded-sm">

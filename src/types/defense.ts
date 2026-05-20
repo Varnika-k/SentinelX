@@ -2,11 +2,16 @@ import { Incident } from './incident';
 
 export type DefenseActionType = 
   | 'isolate_node' 
+  | 'quarantine_workload'
+  | 'disable_account'
   | 'block_traffic' 
+  | 'rotate_credentials'
+  | 'enable_containment_mode'
   | 'increase_monitoring' 
-  | 'escalate_incident' 
-  | 'trigger_containment' 
-  | 'heuristic_reset';
+  | 'terminate_process'
+  | 'reroute_traffic'
+  | 'segment_network_zone'
+  | 'escalate_incident';
 
 export interface DefenseRecommendation {
   id: string;

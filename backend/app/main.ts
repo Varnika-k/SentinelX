@@ -9,6 +9,7 @@ import { initializeDatabase } from './db/data-source';
 import { DatabaseService } from './db/service';
 import { TelemetryWorker } from './workers/telemetry-worker';
 import { digitalTwinEngine } from './simulation/twin-engine';
+import { cloudTelemetryService } from './services/cloud-telemetry';
 
 import { aiService } from './services/ai';
 
@@ -55,6 +56,36 @@ export class SentinelBackend {
         uptime: process.uptime(),
         memory: process.memoryUsage()
       });
+    });
+
+    // --- Tactical Cloud Intelligence integrations ---
+    this.app.get('/api/v1/cloud/shodan', async (req, res) => {
+      try {
+        const ip = (req.query.ip as string) || "104.244.42.1";
+        const result = await cloudTelemetryService.queryShodan(ip);
+        res.json(result);
+      } catch (error) {
+        res.status(500).json({ error: (error as Error).message });
+      }
+    });
+
+    this.app.get('/api/v1/cloud/virustotal', async (req, res) => {
+      try {
+        const target = (req.query.target as string) || "23.22.201.12";
+        const result = await cloudTelemetryService.queryVirusTotal(target);
+        res.json(result);
+      } catch (error) {
+        res.status(500).json({ error: (error as Error).message });
+      }
+    });
+
+    this.app.get('/api/v1/cloud/aws', async (req, res) => {
+      try {
+        const result = await cloudTelemetryService.queryAWSCloudTrail();
+        res.json(result);
+      } catch (error) {
+        res.status(500).json({ error: (error as Error).message });
+      }
     });
 
     // --- Persisted History APIs ---
@@ -261,6 +292,7 @@ export class SentinelBackend {
     this.server.listen(this.port, '0.0.0.0', () => {
       logger.info(`SENTINEL_X_BACKEND initialized core systems on port ${this.port}`);
       this.telemetry.start();
+      cloudTelemetryService.start();
     });
   }
 }

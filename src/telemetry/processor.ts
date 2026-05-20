@@ -250,24 +250,176 @@ export class TelemetryProcessor {
 
   private static handleDefenseAction(state: SimulationState, payload: DefenseActionPayload): SimulationState {
     const payloadTimestamp = payload.timestamp ? new Date(payload.timestamp) : undefined;
+    const action = payload.action;
+    const targetId = payload.targetId;
+
+    let updatedNodes = [...state.nodes];
+    let updatedLinks = [...state.links];
+    let updatedIdentities = [...state.identities];
+    let updatedActiveModules = [...state.activeDefenseModules];
+    let updatedSpreadVelocity = state.spreadVelocity;
+
+    let displayMessage = payload.message || `DEFENSE COUNTERMEASURE: ${action.replace('_', ' ').toUpperCase()} initiated on ${targetId || 'global'}`;
+    let severity: 'low' | 'medium' | 'high' | 'critical' = 'medium';
+
+    switch (action) {
+      case 'isolate_node': {
+        if (targetId) {
+          updatedNodes = updatedNodes.map(n =>
+            n.id === targetId ? { ...n, status: 'isolated' as const, threatScore: 10, degradation: 100, latency: 999 } : n
+          );
+          // Block links connected to isolated node
+          updatedLinks = updatedLinks.map(l =>
+            l.source === targetId || l.target === targetId ? { ...l, traffic: 0, riskWeight: 0 } : l
+          );
+          displayMessage = `DEFENSE CODES ACTIVE: Node [${targetId}] isolated from core network routing table. All physical ingress/egress links severed.`;
+          severity = 'high';
+        }
+        break;
+      }
+      
+      case 'quarantine_workload': {
+        if (targetId) {
+          updatedNodes = updatedNodes.map(n =>
+            n.id === targetId ? { ...n, status: 'quarantined' as any, threatScore: 15, vulnerability: 0.1, degradation: 80, latency: 150 } : n
+          );
+          updatedLinks = updatedLinks.map(l =>
+            l.source === targetId || l.target === targetId ? { ...l, traffic: 0.1, riskWeight: 0.05 } : l
+          );
+          displayMessage = `CONTAINMENT ACTIVE: Workload [${targetId}] placed in secure hypervisor sandbox. Direct API permissions revoked.`;
+          severity = 'high';
+        }
+        break;
+      }
+
+      case 'disable_account': {
+        if (targetId) {
+          updatedIdentities = updatedIdentities.map(id =>
+            id.id === targetId ? { ...id, status: 'locked' as any, riskScore: 0 } : id
+          );
+          displayMessage = `IAM OVERRIDE: Revoked credentials and killed active SAML/OAuth sessions for identity [${targetId}].`;
+          severity = 'high';
+        }
+        break;
+      }
+
+      case 'block_traffic': {
+        if (targetId) {
+          updatedLinks = updatedLinks.map(l =>
+            l.source === targetId || l.target === targetId ? { ...l, traffic: 0, riskWeight: 0 } : l
+          );
+          displayMessage = `TRAFFIC ENFORCEMENT: Segmented all link pathways interacting with perimeter waypoint [${targetId}].`;
+          severity = 'medium';
+        }
+        break;
+      }
+
+      case 'rotate_credentials': {
+        if (targetId) {
+          updatedNodes = updatedNodes.map(n =>
+            n.id === targetId ? { ...n, credentialsRotated: true, vulnerability: Math.max(0.05, n.vulnerability * 0.3) } : n
+          );
+          updatedIdentities = updatedIdentities.map(id =>
+            id.accessibleNodes.includes(targetId) ? { ...id, riskScore: Math.max(5, id.riskScore * 0.2) } : id
+          );
+          displayMessage = `SECRET ROTATION: Successfully rolled and synchronized master certs/secrets on [${targetId}]. Vulnerability minimized.`;
+          severity = 'medium';
+        }
+        break;
+      }
+
+      case 'enable_containment_mode': {
+        if (!updatedActiveModules.includes('auto_containment')) {
+          updatedActiveModules.push('auto_containment');
+        }
+        if (!updatedActiveModules.includes('neural_isolation')) {
+          updatedActiveModules.push('neural_isolation');
+        }
+        updatedSpreadVelocity = 0.15;
+        displayMessage = `SHIELD ACTIVE: Global Containment engaged. Autonomous policy and neural isolation filters active at maximum speed.`;
+        severity = 'critical';
+        break;
+      }
+
+      case 'increase_monitoring': {
+        if (targetId) {
+          updatedNodes = updatedNodes.map(n =>
+            n.id === targetId ? { ...n, monitoringLevel: 100, vulnerability: Math.max(0.1, n.vulnerability * 0.7) } : n
+          );
+          displayMessage = `DEEP TELEMETRY: Hardened eBPF diagnostics and carbon tracers deployed on [${targetId}]. Audit levels raised to maximum.`;
+          severity = 'low';
+        }
+        break;
+      }
+
+      case 'terminate_process': {
+        if (targetId) {
+          updatedNodes = updatedNodes.map(n =>
+            n.id === targetId ? { ...n, status: n.status === 'compromised' ? 'degraded' as any : 'safe' as any, threatScore: 0, degradation: n.status === 'compromised' ? 40 : 10, latency: 15 } : n
+          );
+          displayMessage = `PROCESS TERMINATION: Malicious task binaries killed on [${targetId}]. Node restored to clean degraded state.`;
+          severity = 'high';
+        }
+        break;
+      }
+
+      case 'reroute_traffic': {
+        if (targetId) {
+          updatedLinks = updatedLinks.map(l =>
+            l.source === targetId || l.target === targetId ? { ...l, traffic: 0.05, riskWeight: 0.02 } : l
+          );
+          updatedLinks = updatedLinks.map(l =>
+            l.source !== targetId && l.target !== targetId ? { ...l, traffic: Math.min(1.0, l.traffic + 0.2) } : l
+          );
+          displayMessage = `DYNAMIC ROUTING: Rerouted high-priority enterprise transactions to bypass logical path boundary [${targetId}].`;
+          severity = 'medium';
+        }
+        break;
+      }
+
+      case 'segment_network_zone': {
+        updatedLinks = updatedLinks.map(l => {
+          const sNode = state.nodes.find(n => n.id === l.source);
+          const tNode = state.nodes.find(n => n.id === l.target);
+          if (sNode && tNode && sNode.environmentId !== tNode.environmentId) {
+            return { ...l, traffic: 0, riskWeight: 0 };
+          }
+          return l;
+        });
+        displayMessage = `ZONE ISOLATION: Logical zoning enforced. All cross-environment border links severed. Prod zone in total air-gap lock.`;
+        severity = 'critical';
+        break;
+      }
+
+      default:
+        break;
+    }
 
     const newEvent = TelemetryService.createEvent(
-      payload.message || `DEFENSE: ${payload.module.replace('_', ' ').toUpperCase()} ${payload.action} on ${payload.targetId || 'global'}`,
+      displayMessage,
       'defense',
-      'low',
-      'system',
-      payload.targetId,
+      severity,
+      payload.source || 'orchestrator_core',
+      targetId,
       undefined,
       undefined,
       payloadTimestamp
     );
 
-    const incidents = incidentManager.processEvent(newEvent, state.nodes, state.links);
+    const incidents = incidentManager.processEvent(newEvent, updatedNodes, updatedLinks);
+    const metrics = TelemetryService.calculateMetrics(updatedNodes);
 
     return {
       ...state,
+      nodes: updatedNodes,
+      links: updatedLinks,
+      identities: updatedIdentities,
+      activeDefenseModules: updatedActiveModules,
+      spreadVelocity: updatedSpreadVelocity,
       events: [newEvent, ...state.events].slice(0, 100),
-      incidents
+      incidents,
+      threatLevel: metrics.threatLevel,
+      metrics
     };
   }
 

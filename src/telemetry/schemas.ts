@@ -67,9 +67,10 @@ export interface AttackAlertPayload extends BaseTelemetryPayload {
 
 export interface DefenseActionPayload extends BaseTelemetryPayload {
   module: string;
-  action: 'enable' | 'disable' | 'patch';
+  action: string; // The specific defense action category or command
   targetId?: string;
   result: 'success' | 'failure';
+  metadata?: Record<string, any>;
 }
 
 export interface MetricTickPayload extends BaseTelemetryPayload {

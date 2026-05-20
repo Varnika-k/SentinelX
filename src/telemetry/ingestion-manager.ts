@@ -6,9 +6,11 @@ import {
 import { telemetryPipeline } from './pipeline';
 import { 
   TelemetryConnector, 
-  MockSIEMConnector, 
-  CloudTrailConnector, 
-  EDRConnector 
+  WazuhConnector, 
+  AWSCloudTrailConnector, 
+  FalcoConnector, 
+  SuricataConnector, 
+  ZeekConnector 
 } from './connectors/base';
 import { telemetryBus } from './bus';
 import { TelemetryTopic } from './schemas';
@@ -35,27 +37,39 @@ export class EnterpriseIngestionManager {
 
   private initializeConnectors() {
     this.connectors = [
-      new MockSIEMConnector({
-        id: 'splunk-global-01',
-        name: 'Enterprise Splunk SIEM',
-        type: TelemetrySourceType.SIEM,
+      new WazuhConnector({
+        id: 'wazuh-agent-manager',
+        name: 'Wazuh Host Security',
+        type: TelemetrySourceType.EDR,
         enabled: true
       }),
-      new CloudTrailConnector({
-        id: 'aws-us-east-1',
-        name: 'AWS CloudTrail Production',
+      new AWSCloudTrailConnector({
+        id: 'aws-cloudtrail-global',
+        name: 'AWS CloudTrail Hub',
         type: TelemetrySourceType.CLOUD_TRAIL,
         enabled: true
       }),
-      new EDRConnector({
-        id: 'crowdstrike-falcon',
-        name: 'CrowdStrike Falcon',
-        type: TelemetrySourceType.EDR,
+      new FalcoConnector({
+        id: 'falco-k8s-runtime',
+        name: 'Falco Container Guard',
+        type: TelemetrySourceType.K8S_AUDIT,
+        enabled: true
+      }),
+      new SuricataConnector({
+        id: 'suricata-ips-sensor',
+        name: 'Suricata Network IDS',
+        type: TelemetrySourceType.IDS_IPS,
+        enabled: true
+      }),
+      new ZeekConnector({
+        id: 'zeek-netflow-sensor',
+        name: 'Zeek Network Security Monitor',
+        type: TelemetrySourceType.NETFLOW,
         enabled: true
       })
     ];
     this.metrics.activeConnectors = this.connectors.length;
-    logger.info(`Initialized ${this.metrics.activeConnectors} telemetry connectors`);
+    logger.info(`Initialized ${this.metrics.activeConnectors} enterprise security telemetry connectors`);
   }
 
   public startIngestion() {

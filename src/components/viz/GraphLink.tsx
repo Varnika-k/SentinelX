@@ -5,38 +5,64 @@ import { VisualSettings } from './NetworkGraph';
 
 interface GraphLinkProps {
   id: string;
-  source: { x: number, y: number, status: string };
-  target: { x: number, y: number, status: string };
+  source: { x: number, y: number, status: string, latency?: number };
+  target: { x: number, y: number, status: string, latency?: number };
   showHeatmap: boolean;
+  showCommunicationInstability?: boolean;
+  traffic?: number;
+  riskWeight?: number;
   visualSettings?: VisualSettings;
 }
 
-export const GraphLink = React.memo(({ id, source, target, showHeatmap, visualSettings = {
-  intensity: 1,
-  speed: 1,
-  glow: 1,
-  heatmapOpacity: 0.15,
-  pulseFrequency: 1
-} }: GraphLinkProps) => {
+export const GraphLink = React.memo(({ 
+  id, 
+  source, 
+  target, 
+  showHeatmap, 
+  showCommunicationInstability = false,
+  traffic = 0.2,
+  riskWeight = 0.1,
+  visualSettings = {
+    intensity: 1,
+    speed: 1,
+    glow: 1,
+    heatmapOpacity: 0.15,
+    pulseFrequency: 1
+  } 
+}: GraphLinkProps) => {
   const isCompromised = source.status === 'compromised' || target.status === 'compromised';
   const bothCompromised = source.status === 'compromised' && target.status === 'compromised';
   const isIsolated = source.status === 'isolated' || target.status === 'isolated';
+  
+  // Instability check: high latency source/target OR high traffic weight
+  const isUnstable = showCommunicationInstability && (traffic > 0.65 || (source.latency && source.latency > 50) || (target.latency && target.latency > 50));
   const isActiveRed = isCompromised || showHeatmap;
+
+  // Custom line stroke width and style mappings
+  const strokeWidth = bothCompromised 
+    ? 2.5 * visualSettings.intensity 
+    : isUnstable 
+    ? 2 * visualSettings.intensity 
+    : 1;
+
+  const getLineClassName = () => {
+    if (isIsolated) return "stroke-state-iso/10";
+    if (isCompromised) return "stroke-state-danger/40";
+    if (isUnstable) return "stroke-state-warning/60";
+    return "stroke-white/10";
+  };
 
   return (
     <g>
       <line
         x1={source.x || 0} y1={source.y || 0}
         x2={target.x || 0} y2={target.y || 0}
-        className={cn(
-          "transition-all duration-500",
-          isCompromised ? "stroke-state-danger/40" : isIsolated ? "stroke-state-iso/10" : "stroke-white/10"
-        )}
-        strokeWidth={bothCompromised ? 2 * visualSettings.intensity : 1}
-        strokeDasharray={isActiveRed ? "none" : "4 4"}
+        className={cn("transition-all duration-500", getLineClassName())}
+        strokeWidth={strokeWidth}
+        strokeDasharray={isActiveRed ? "none" : isUnstable ? "2 2" : "4 4"}
       />
       
-      {/* Visual Flow Animation */}
+      {/* Dynamic Visual Flow Animation / Pulsing overlay */}
       {isActiveRed ? (
         <motion.line
           x1={source.x || 0} y1={source.y || 0}
@@ -48,6 +74,17 @@ export const GraphLink = React.memo(({ id, source, target, showHeatmap, visualSe
           transition={{ duration: 1.5 / visualSettings.speed, repeat: Infinity, ease: "easeInOut" }}
           className="stroke-state-danger/30 pointer-events-none"
         />
+      ) : isUnstable ? (
+        <motion.line
+          x1={source.x || 0} y1={source.y || 0}
+          x2={target.x || 0} y2={target.y || 0}
+          animate={{ 
+            strokeOpacity: [0.3, 0.8 * visualSettings.glow, 0.3],
+            strokeWidth: [1.5, 3.5 * visualSettings.intensity, 1.5] 
+          }}
+          transition={{ duration: 0.8 / visualSettings.speed, repeat: Infinity, ease: "easeIn" }}
+          className="stroke-state-warning/40 pointer-events-none"
+        />
       ) : !isIsolated && (
         <line
           x1={source.x || 0} y1={source.y || 0}
@@ -58,7 +95,7 @@ export const GraphLink = React.memo(({ id, source, target, showHeatmap, visualSe
           <animate 
             attributeName="stroke-dashoffset" 
             from="0" to="-20" 
-            dur={`${3 / visualSettings.speed}s`}
+            dur={`${3 / (visualSettings.speed * (1 + traffic))}s`}
             repeatCount="indefinite" 
           />
         </line>
@@ -89,8 +126,32 @@ export const GraphLink = React.memo(({ id, source, target, showHeatmap, visualSe
         </React.Fragment>
       )}
 
+      {/* Latency Jitter packets */}
+      {isUnstable && (
+        <React.Fragment>
+          {[0, 1].map((i) => (
+            <motion.circle
+              key={`jitter-${i}`}
+              r={2.5 * visualSettings.intensity}
+              animate={{
+                cx: [source.x || 0, target.x || 0],
+                cy: [source.y || 0, target.y || 0],
+                opacity: [0, 1, 0]
+              }}
+              transition={{
+                duration: 1 / visualSettings.speed,
+                repeat: Infinity,
+                ease: "easeInOut",
+                delay: i * 0.5
+              }}
+              className="fill-state-warning blur-[0.5px]"
+            />
+          ))}
+        </React.Fragment>
+      )}
+
       {/* Packet flow */}
-      {!isIsolated && (
+      {!isIsolated && !isUnstable && (
          <motion.circle
            r={1.5 * visualSettings.intensity}
            animate={{
@@ -99,7 +160,7 @@ export const GraphLink = React.memo(({ id, source, target, showHeatmap, visualSe
              opacity: [0, 1, 0]
            }}
            transition={{
-             duration: 2 / visualSettings.speed,
+             duration: 2 / (visualSettings.speed * (1 + traffic)),
              repeat: Infinity,
              ease: "linear",
              delay: Math.atan2(target.y - source.y, target.x - source.x) / (Math.PI * visualSettings.speed)
@@ -117,6 +178,11 @@ export const GraphLink = React.memo(({ id, source, target, showHeatmap, visualSe
     prev.target.y === next.target.y &&
     prev.source.status === next.source.status &&
     prev.target.status === next.target.status &&
-    prev.showHeatmap === next.showHeatmap
+    prev.source.latency === next.source.latency &&
+    prev.target.latency === next.target.latency &&
+    prev.showHeatmap === next.showHeatmap &&
+    prev.showCommunicationInstability === next.showCommunicationInstability &&
+    prev.traffic === next.traffic &&
+    prev.riskWeight === next.riskWeight
   );
 });

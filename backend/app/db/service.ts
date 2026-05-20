@@ -9,11 +9,21 @@ import { logger } from '../core/logger';
 import { Between } from 'typeorm';
 
 export class DatabaseService {
-  private static telemetryRepo = AppDataSource.getRepository(TelemetryEventEntity);
-  private static incidentRepo = AppDataSource.getRepository(IncidentEntity);
-  private static replayRepo = AppDataSource.getRepository(ReplaySessionEntity);
-  private static infraRepo = AppDataSource.getRepository(InfrastructureNodeEntity);
-  private static simulationRepo = AppDataSource.getRepository(SimulationSessionEntity);
+  private static get telemetryRepo() {
+    return AppDataSource.getRepository(TelemetryEventEntity);
+  }
+  private static get incidentRepo() {
+    return AppDataSource.getRepository(IncidentEntity);
+  }
+  private static get replayRepo() {
+    return AppDataSource.getRepository(ReplaySessionEntity);
+  }
+  private static get infraRepo() {
+    return AppDataSource.getRepository(InfrastructureNodeEntity);
+  }
+  private static get simulationRepo() {
+    return AppDataSource.getRepository(SimulationSessionEntity);
+  }
 
   static async saveSimulationSession(session: Partial<SimulationSessionEntity>) {
     try {
@@ -68,6 +78,9 @@ export class DatabaseService {
     }
   }
 
+  private static telemetryBuffer: any[] = [];
+  private static flushTimeout: NodeJS.Timeout | null = null;
+
   static async saveTelemetry(event: TelemetryEvent) {
     try {
       const entity = this.telemetryRepo.create({
@@ -75,9 +88,48 @@ export class DatabaseService {
         timestamp: event.timestamp ? new Date(event.timestamp) : new Date(),
         payload: event.payload
       });
-      return await this.telemetryRepo.save(entity);
+      
+      // Buffer the entity for batch inserts, dramatic I/O optimization
+      this.telemetryBuffer.push(entity);
+      
+      if (this.telemetryBuffer.length >= 35) {
+        await this.flushTelemetry();
+      } else if (!this.flushTimeout) {
+        // Lazy-timer initialization
+        this.flushTimeout = setTimeout(() => {
+          this.flushTelemetry().catch(err => logger.error('Async telemetry flush failed', err));
+        }, 2000);
+      }
+      
+      return entity;
     } catch (error) {
-      logger.error('Failed to persist telemetry event', error);
+      logger.error('Failed to buffer telemetry event for batching', error);
+    }
+  }
+
+  private static async flushTelemetry() {
+    if (this.flushTimeout) {
+      clearTimeout(this.flushTimeout);
+      this.flushTimeout = null;
+    }
+
+    if (this.telemetryBuffer.length === 0) return;
+
+    const batch = [...this.telemetryBuffer];
+    this.telemetryBuffer = [];
+
+    try {
+      await this.telemetryRepo.save(batch);
+    } catch (error) {
+      logger.error(`Critical telemetry batch save failed. Executing graceful self-recovering individual writes...`, error);
+      // Save individually to avoid complete packet drops
+      for (const entity of batch) {
+        try {
+          await this.telemetryRepo.save(entity);
+        } catch (individualError) {
+          logger.error('Failed to write individual fallback telemetry event', individualError);
+        }
+      }
     }
   }
 

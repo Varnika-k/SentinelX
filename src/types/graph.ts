@@ -26,6 +26,28 @@ export interface GraphIntelligenceReport {
     distanceFromCompromise: number;
     riskTrend: 'rising' | 'stable' | 'falling';
   }[];
+  // Predictive operational intelligence & resilience properties
+  cascadingFailureRisks?: {
+    nodeId: string;
+    cascadingProbability: number; // 0-1 percentage
+    description: string;
+  }[];
+  infrastructurePressure?: {
+    nodeId: string;
+    stressScore: number; // 0-100
+    degradationForecast: number; // 0-100 %
+  }[];
+  survivabilityScores?: {
+    nodeId: string;
+    survivabilityScore: number; // 0-100 %
+  }[];
+  resilienceIndex?: number; // 0-100 global health-defense scale
+  recoveryTimelines?: {
+    nodeId: string;
+    estimatedRecoverySeconds: number;
+    progressPercentage: number;
+  }[];
+  threatTrajectoryAngle?: number;
 }
 
 export interface GraphTraversalOptions {

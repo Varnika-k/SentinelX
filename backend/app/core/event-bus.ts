@@ -24,12 +24,24 @@ class EventBus extends EventEmitter {
   private initSubscriber() {
     const sub = redisManager.getSubscriber();
     if (sub) {
+      // Standard messages listener
       sub.on('message', (channel, message) => {
         try {
           const envelope: TelemetryEnvelope = JSON.parse(message);
           this.localDispatch(channel, envelope.payload);
         } catch (error) {
           logger.error(`Failed to parse Redis message on channel ${channel}`, error);
+        }
+      });
+
+      // Pattern messages listener (wildcards)
+      sub.on('pmessage', (pattern, channel, message) => {
+        try {
+          const envelope: TelemetryEnvelope = JSON.parse(message);
+          // Dispatch using the subscription pattern registered
+          this.localDispatch(pattern, envelope.payload);
+        } catch (error) {
+          logger.error(`Failed to parse Redis pmessage on pattern ${pattern} channel ${channel}`, error);
         }
       });
     }
@@ -59,6 +71,15 @@ class EventBus extends EventEmitter {
     if (redisManager.getIsMock() || !client) {
       // Direct local dispatch if Redis is down/mock
       this.localDispatch(topic, payload);
+      // Check if this topic matches any stored wildcard subscriptions
+      for (const subTopic of this.subscriptions.keys()) {
+        if (subTopic.includes('*')) {
+          const regex = new RegExp('^' + subTopic.replace(/\*/g, '.*') + '$');
+          if (regex.test(topic)) {
+            this.localDispatch(subTopic, payload);
+          }
+        }
+      }
       return;
     }
 
@@ -78,10 +99,15 @@ class EventBus extends EventEmitter {
       const sub = redisManager.getSubscriber();
       if (sub && !redisManager.getIsMock()) {
         try {
-          await sub.subscribe(topic);
-          logger.info(`Subscribed to global Redis channel: ${topic}`);
+          if (topic.includes('*')) {
+            await sub.psubscribe(topic);
+            logger.info(`Pattern subscribed to global Redis channels: ${topic}`);
+          } else {
+            await sub.subscribe(topic);
+            logger.info(`Subscribed to global Redis channel: ${topic}`);
+          }
         } catch (error) {
-          logger.error(`Redis subscribe failed for topic ${topic}`, error);
+          logger.error(`Redis subscribe/psubscribe failed for topic ${topic}`, error);
         }
       }
     }
@@ -97,7 +123,15 @@ class EventBus extends EventEmitter {
         this.subscriptions.delete(topic);
         const sub = redisManager.getSubscriber();
         if (sub && !redisManager.getIsMock()) {
-          await sub.unsubscribe(topic);
+          try {
+            if (topic.includes('*')) {
+              await sub.punsubscribe(topic);
+            } else {
+              await sub.unsubscribe(topic);
+            }
+          } catch (error) {
+            logger.error(`Redis unsubscribe failed for ${topic}`, error);
+          }
         }
       }
     }

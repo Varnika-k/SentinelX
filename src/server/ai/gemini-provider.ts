@@ -21,7 +21,7 @@ export class GeminiProvider implements AIProvider {
     const prompt = this.buildPrompt(request);
     
     const response = await this.client.models.generateContent({
-      model: "gemini-3-flash-preview",
+      model: "gemini-3.5-flash",
       contents: prompt,
       config: {
         responseMimeType: "application/json",
@@ -51,7 +51,7 @@ export class GeminiProvider implements AIProvider {
     const prompt = this.buildPrompt(request) + "\n\nProvide the analysis in a structured operational format. Be concise and technical.";
     
     const result = await this.client.models.generateContentStream({
-      model: "gemini-3-flash-preview",
+      model: "gemini-3.5-flash",
       contents: prompt,
     });
 
@@ -66,21 +66,21 @@ export class GeminiProvider implements AIProvider {
     const { type, context } = request;
     const { nodes, links, events, targetNode, recentActivity, graphAnalytics } = context;
 
-    let prompt = `You are SentinelX Intelligence Core. 
-    Analyze the following network state from an operational security perspective.
+    let prompt = `You are SentinelX Intelligence Core - an elite CyOps and autonomous defense planner.
+    Conduct a forensic and operations-aware threat propagation review.
     
     OPERATION_TYPE: ${type.toUpperCase()}
-    NETWORK_NODES: ${nodes ? nodes.length : 0} active
-    NETWORK_LINKS: ${links ? links.length : 0} active
-    RECENT_EVENTS: ${events ? events.length : 0} logged
+    NETWORK_NODES: ${nodes ? nodes.length : 0} nodes online in digital twin
+    NETWORK_LINKS: ${links ? links.length : 0} linking threads active
+    RECENT_EVENTS: ${events ? events.length : 0} logs ingested
     `;
 
     if (graphAnalytics) {
       prompt += `
       GRAPH_INTELLIGENCE_METRICS:
-      Critical Paths: ${JSON.stringify(graphAnalytics.criticalPaths)}
-      Crown Jewel Risk: ${JSON.stringify(graphAnalytics.crownJewelRisk)}
-      Spread Probability: ${JSON.stringify(graphAnalytics.lateralMovementProbability?.slice(0, 3))}
+      Critical Infrastructure Paths: ${JSON.stringify(graphAnalytics.criticalPaths)}
+      Crown Jewel Exposure Weights: ${JSON.stringify(graphAnalytics.crownJewelRisk)}
+      Lateral Propagation Vectors: ${JSON.stringify(graphAnalytics.lateralMovementProbability?.slice(0, 4))}
       
       AUTONOMOUS_DEFENSE_PROPOSALS:
       Active Recommendations: ${JSON.stringify(context.defenseRecommendations || [])}
@@ -89,31 +89,33 @@ export class GeminiProvider implements AIProvider {
 
     if (targetNode) {
       prompt += `
-      TARGET_SYSTEM_FOCUS:
+      TARGETED_INFRASTRUCTURE_SPEC_FOCUS:
       ID: ${targetNode.id}
       Type: ${targetNode.type}
-      Status: ${targetNode.status}
-      Threat Score: ${targetNode.threatScore}
-      Vulnerability: ${targetNode.vulnerability}
-      Last Attack: ${targetNode.lastAttackType || 'None'}
+      Status: ${targetNode.status} (Infection/Degradation Scope)
+      Threat Score: ${targetNode.threatScore}/100
+      Latency Profile: ${targetNode.latency || 12}ms
+      Degradation Coefficient: ${targetNode.degradation || 0}%
+      Exposure Index: ${targetNode.vulnerability}
+      Last Event Footprint: ${targetNode.lastAttackType || 'None'}
       `;
     }
 
     if (recentActivity && recentActivity.length > 0) {
       prompt += `
-      RECENT_TELEMETRY_STREAM:
-      ${JSON.stringify(recentActivity.slice(-5))}
+      REAL-TIME INGESTION STREAM (FIRST-RESPONSE AUDITS):
+      ${JSON.stringify(recentActivity.slice(-8))}
       `;
     }
 
     prompt += `
-    OBJECTIVES:
-    1. Assess the situational risk.
-    2. Identify infrastructure-aware propagation paths.
-    3. Provide explainable operational reasoning.
-    4. Recommend containment or defense actions.
+    CRITICAL COGNITIVE OBJECTIVES:
+    1. EXPLAIN THE THREAT: Analyze the root cause of anomalous behaviors seen in the ingestion stream.
+    2. PREDICT SPREAD: Determine the risk of lateral propagation down critical network paths to crown jewel nodes (e.g., db-tier, serverless core).
+    3. RECOMMENDED CONTAINMENT: Formulate a tier-1 tactical isolation plan (e.g. isolate_node, quarantine_workload, block_traffic, terminate_process, rotate_credentials). Give actionable steps.
+    4. OPERATIONAL PRESSURE: Detail the performance cost. Assess node degradation, throughput drops, latency anomalies, and overall cyber operational friction.
     
-    STRICT_REQUIREMENT: Maintain an enterprise SOC tone. No conversational filler. Focus on topology and technical indicators.
+    STRICT SEC_COMMANDS: Maintain an extremely professional, calm, military-grade SOC threat briefing tone. Under no circumstances use conversational intros, greetings, self-praising or flowery AI descriptions. Keep recommendations highly actionable and aligned with SentinelX defense API values.
     `;
 
     return prompt;

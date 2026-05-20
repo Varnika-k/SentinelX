@@ -1,4 +1,5 @@
 import { useSimulation } from '../hooks/useSimulation';
+import { useTelemetryStore } from './store';
 import { telemetryBus } from './bus';
 import { TelemetryTopic, NodeUpdatePayload, AttackAlertPayload, MetricTickPayload } from './schemas';
 import { useEffect } from 'react';
@@ -10,7 +11,8 @@ import { useEffect } from 'react';
  * that mimics a real backend streaming events.
  */
 export function useTelemetryBridge() {
-  const { state, launchAttack, isolateNode, resetSimulation, setSimulationSpeed, toggleDefenseModule } = useSimulation();
+  const { state: telemetryState } = useTelemetryStore();
+  const { state, launchAttack, isolateNode, resetSimulation, setSimulationSpeed, toggleDefenseModule } = useSimulation(telemetryState);
 
   // Every time state changes, we could emit updates, 
   // but it's more efficient to let the simulation engine emit them directly.

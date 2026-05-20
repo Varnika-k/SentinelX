@@ -72,33 +72,70 @@ export class TelemetryPipeline {
 
     switch (sourceType) {
       case TelemetrySourceType.FIREWALL:
-        message = `Firewall Alert: ${rawPayload.rule_name || 'Generic Rule'} - ${rawPayload.action}`;
+        message = `Firewall alert: ${rawPayload.rule_name || 'generic rule'} - ${rawPayload.action}`;
         severity = rawPayload.priority === 'high' ? 'high' : 'medium';
         targetAsset = rawPayload.dest_ip;
         category = 'network';
         break;
       case TelemetrySourceType.EDR:
-        message = `EDR Alert: Process execution of ${rawPayload.process_name} flagged as suspicious`;
-        severity = 'high';
-        targetAsset = rawPayload.hostname;
-        category = 'endpoint';
+        // Handle Wazuh style telemetry or default EDR
+        if (rawPayload.rule && rawPayload.agent) {
+          message = `[Wazuh] ${rawPayload.rule.description || 'unclassified threat'}`;
+          severity = rawPayload.rule.level >= 10 ? 'critical' : (rawPayload.rule.level >= 7 ? 'high' : 'medium');
+          targetAsset = rawPayload.agent.name || 'unspec-agent';
+          category = 'endpoint';
+        } else {
+          message = `EDR threat: process execution ${rawPayload.process_name || 'unknown'} flagged suspicious`;
+          severity = 'high';
+          targetAsset = rawPayload.hostname || 'system';
+          category = 'endpoint';
+        }
         break;
       case TelemetrySourceType.CLOUD_TRAIL:
-        message = `Cloud Event: ${rawPayload.event_name} by ${rawPayload.user_id}`;
-        severity = rawPayload.risk_level || 'low';
-        targetAsset = rawPayload.resource_id;
+        // AWS CloudTrail specific structure
+        message = `[CloudTrail] APICall: ${rawPayload.event_name} by identity [${rawPayload.user_id}]`;
+        severity = rawPayload.risk_level === 'critical' ? 'critical' : (rawPayload.risk_level === 'high' ? 'high' : 'medium');
+        targetAsset = rawPayload.resource_id || 'aws-global';
         category = 'cloud';
         break;
       case TelemetrySourceType.K8S_AUDIT:
-        message = `K8s Audit: ${rawPayload.verb} on ${rawPayload.resource}`;
-        severity = rawPayload.decision === 'allow' ? 'low' : 'medium';
-        targetAsset = rawPayload.namespace;
-        category = 'container';
+        // Falco / Kubernetes specific structure
+        if (rawPayload.rule) {
+          message = `[Falco] Rule triggered: ${rawPayload.rule} | ${rawPayload.output}`;
+          severity = rawPayload.priority === 'Critical' ? 'critical' : 'high';
+          targetAsset = rawPayload.container || 'k8s-core';
+          category = 'container';
+        } else {
+          message = `K8s Audit: ${rawPayload.verb || 'mutate'} on ${rawPayload.resource || 'resource'}`;
+          severity = rawPayload.decision === 'allow' ? 'low' : 'medium';
+          targetAsset = rawPayload.namespace || 'production';
+          category = 'container';
+        }
+        break;
+      case TelemetrySourceType.IDS_IPS:
+        // Suricata signature logs
+        if (rawPayload.alert) {
+          message = `[Suricata IDS] Alert signature: ${rawPayload.alert.signature}`;
+          severity = rawPayload.alert.severity === 1 ? 'critical' : 'high';
+          targetAsset = rawPayload.dest_ip || 'perimeter-ingress';
+          category = 'network';
+        } else {
+          message = `IDS/IPS signature breach detected on perimeter interface`;
+          severity = 'high';
+          category = 'network';
+        }
+        break;
+      case TelemetrySourceType.NETFLOW:
+        // Zeek structural records
+        message = `[Zeek Flow] anomaly detected on service [${rawPayload.service || 'unknown'}]: ${rawPayload.description || 'lateral scan'}`;
+        severity = rawPayload.anomaly_score >= 80 ? 'high' : 'medium';
+        targetAsset = rawPayload['id.orig_h'] || 'internal-core';
+        category = 'network';
         break;
       default:
-        message = rawPayload.description || rawPayload.message || 'Legacy Telemetry Event';
+        message = rawPayload.description || rawPayload.message || 'legacy telemetry event';
         severity = rawPayload.severity || 'low';
-        targetAsset = rawPayload.asset_id;
+        targetAsset = rawPayload.asset_id || 'general-asset';
     }
 
     return {

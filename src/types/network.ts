@@ -1,4 +1,4 @@
-export type NodeStatus = 'safe' | 'compromised' | 'isolated';
+export type NodeStatus = 'safe' | 'compromised' | 'isolated' | 'quarantined' | 'degraded';
 export type NodeType = 'gateway' | 'database' | 'firewall' | 'hr-system' | 'workstation' | 'server';
 
 export interface NetworkNode {
@@ -14,6 +14,10 @@ export interface NetworkNode {
   threatScore: number; // 0 to 100
   lastActivity?: string | Date;
   lastAttackType?: 'ransomware' | 'ddos' | 'phishing' | 'insider' | 'apt' | 'zero-day';
+  degradation?: number; // 0 to 100 %
+  latency?: number; // ms latency
+  monitoringLevel?: number; // 0 to 100 % proactive monitor
+  credentialsRotated?: boolean;
 }
 
 export interface NetworkLink {

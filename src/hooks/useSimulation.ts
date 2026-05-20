@@ -8,45 +8,28 @@ import { telemetryBus } from '../telemetry/bus';
 import { TelemetryTopic, NodeUpdatePayload, AttackAlertPayload, MetricTickPayload } from '../telemetry/schemas';
 
 import { EnterpriseIngestionManager, ingestionManager } from '../telemetry/ingestion-manager';
+import { ReplayEngine } from '../telemetry/replay';
 
-export function useSimulation() {
+export function useSimulation(telemetryState: SimulationState) {
+  const telemetryStateRef = useRef(telemetryState);
+  useEffect(() => {
+    telemetryStateRef.current = telemetryState;
+  }, [telemetryState]);
+
   useEffect(() => {
     ingestionManager.startIngestion();
     return () => ingestionManager.stopIngestion();
   }, []);
 
-  const [state, setState] = useState<SimulationState>({
-    nodes: INITIAL_NODES,
-    links: INITIAL_LINKS,
-    identities: INITIAL_IDENTITIES,
-    roles: INITIAL_ROLES,
-    identityRelationships: INITIAL_RELATIONSHIPS,
-    environments: INITIAL_ENVIRONMENTS,
-    knowledgeBase: INITIAL_KNOWLEDGE_BASE,
-    agentOrchestration: INITIAL_ORCHESTRATION,
-    events: [TelemetryService.createEvent('Sentinel Core Online. Systems nominal.', 'system', 'low')],
-    incidents: [],
-    defenseRecommendations: [],
-    isSimulating: false,
-    threatLevel: 'low',
-    metrics: TelemetryService.calculateMetrics(INITIAL_NODES),
-    simulationSpeed: 3000,
-    spreadVelocity: 1.0,
-    activeDefenseModules: ['firewall'],
-  });
+  const state = telemetryState;
 
   const updateIncidentStatus = useCallback((incidentId: string, status: any) => {
-    // In a real app, this would be an API call
-    // Here, we'll manually update the local simulation state AND emit a telemetry event so other stores sync
     telemetryBus.publish(TelemetryTopic.UI_ACTION, {
       source: 'operator',
       action: 'INCIDENT_UPDATE_STATUS',
       incidentId,
       status
     });
-
-    // We also need to trigger the processor to sync its internal manager if it's separate
-    // In this singleton implementation, the processor will handle it if we define the logic there.
   }, []);
 
   const addIncidentNote = useCallback((incidentId: string, note: string) => {
@@ -58,21 +41,25 @@ export function useSimulation() {
     });
   }, []);
 
+  const orchestrateDefense = useCallback((action: string, targetId?: string) => {
+    telemetryBus.publish(TelemetryTopic.DEFENSE_ACTION, {
+      source: 'operator',
+      module: 'defense_orchestrator',
+      action,
+      targetId,
+      result: 'success'
+    });
+  }, []);
+
   const applyDefenseRecommendation = useCallback((rec: any) => {
-    // 1. Mark as applied in defense engine
     telemetryBus.publish(TelemetryTopic.UI_ACTION, {
       source: 'operator',
       action: 'DEFENSE_APPLY',
       recId: rec.id
     });
 
-    // 2. Perform the actual action
-    if (rec.action === 'isolate_node') {
-      isolateNode(rec.targetId);
-    } else if (rec.action === 'escalate_incident') {
-      updateIncidentStatus(rec.targetId, 'escalated');
-    }
-  }, []);
+    orchestrateDefense(rec.action, rec.targetId);
+  }, [orchestrateDefense]);
 
   const dismissDefenseRecommendation = useCallback((recId: string) => {
     telemetryBus.publish(TelemetryTopic.UI_ACTION, {
@@ -87,11 +74,13 @@ export function useSimulation() {
 
   // Telemetry Emission Helper
   const emitTelemetry = useCallback((updates: Partial<SimulationState>) => {
+    const currentNodes = telemetryStateRef.current.nodes;
+    const currentEventsLength = telemetryStateRef.current.events.length;
+    const currentThreatLevel = telemetryStateRef.current.threatLevel;
+
     if (updates.nodes) {
-      // Find diffs and emit NODE_UPDATE for each changed node
-      // This mimics real granular telemetry
-      updates.nodes.forEach((newNode, i) => {
-        const oldNode = state.nodes[i];
+      updates.nodes.forEach((newNode) => {
+        const oldNode = currentNodes.find(n => n.id === newNode.id);
         if (oldNode && (oldNode.status !== newNode.status || oldNode.threatScore !== newNode.threatScore)) {
           telemetryBus.publish(TelemetryTopic.NODE_UPDATE, {
             source: 'simulation_engine',
@@ -112,7 +101,7 @@ export function useSimulation() {
           compromised: updates.metrics.compromised,
           isolated: updates.metrics.isolated,
           total: updates.metrics.total,
-          threatLevel: updates.metrics.threatLevel || state.threatLevel,
+          threatLevel: updates.metrics.threatLevel || currentThreatLevel,
           systemHealth: updates.metrics.systemHealth
         }
       };
@@ -127,9 +116,8 @@ export function useSimulation() {
       });
     }
 
-    // We can also publish generic system logs
-    if (updates.events && updates.events.length > state.events.length) {
-      const newOnly = updates.events.slice(0, updates.events.length - state.events.length);
+    if (updates.events && updates.events.length > currentEventsLength) {
+      const newOnly = updates.events.slice(0, updates.events.length - currentEventsLength);
       newOnly.forEach(ev => {
         telemetryBus.publish(TelemetryTopic.SYSTEM_LOG, {
           source: ev.origin || 'system',
@@ -140,7 +128,7 @@ export function useSimulation() {
         });
       });
     }
-  }, [state.nodes, state.events.length, state.threatLevel]);
+  }, []);
 
   const cleanupScenarios = useCallback(() => {
     scenarioTimeoutRefs.current.forEach(clearTimeout);
@@ -152,66 +140,53 @@ export function useSimulation() {
   }, [cleanupScenarios]);
 
   const launchAttack = useCallback((type: AttackType, specificTargetId?: string, intensity: number = 0.8, identityId?: string) => {
-    setState(prev => {
-      let targetNodeId = specificTargetId || '';
-      let targetIdentityId = identityId || '';
+    const currentState = telemetryStateRef.current;
+    let targetNodeId = specificTargetId || '';
+    let targetIdentityId = identityId || '';
 
-      if (!targetNodeId && !targetIdentityId) {
-        if (type === 'phishing') {
-          const targets = prev.nodes.filter(n => n.type === 'workstation' && n.status === 'safe');
-          if (targets.length > 0) targetNodeId = targets[Math.floor(Math.random() * targets.length)].id;
-        } else if (type === 'insider') {
-          const targets = prev.nodes.filter(n => (n.type === 'database' || n.type === 'hr-system') && n.status === 'safe');
-          if (targets.length > 0) targetNodeId = targets[Math.floor(Math.random() * targets.length)].id;
-        } else {
-          targetNodeId = 'gw-1';
-        }
+    if (!targetNodeId && !targetIdentityId) {
+      if (type === 'phishing') {
+        const targets = currentState.nodes.filter(n => n.type === 'workstation' && n.status === 'safe');
+        if (targets.length > 0) targetNodeId = targets[Math.floor(Math.random() * targets.length)].id;
+      } else if (type === 'insider') {
+        const targets = currentState.nodes.filter(n => (n.type === 'database' || n.type === 'hr-system') && n.status === 'safe');
+        if (targets.length > 0) targetNodeId = targets[Math.floor(Math.random() * targets.length)].id;
+      } else {
+        targetNodeId = 'gw-1';
       }
+    }
 
-      const payload: AttackPayload = { 
-        type, 
-        targetId: targetNodeId || undefined, 
-        identityId: targetIdentityId || undefined,
-        intensity 
-      };
-      
-      const updates = SimulationEngine.executeAttack(prev, payload);
-      
-      // Emit to bus
-      telemetryBus.publish(TelemetryTopic.ATTACK_ALERT, {
-        source: 'simulation_coordinator',
-        attackType: type,
-        targetId: targetNodeId || targetIdentityId,
-        severity: 'high',
-        origin: payload.origin || 'external_actor'
-      } as AttackAlertPayload);
+    const payload: AttackPayload = { 
+      type, 
+      targetId: targetNodeId || undefined, 
+      identityId: targetIdentityId || undefined,
+      intensity 
+    };
+    
+    const updates = SimulationEngine.executeAttack(currentState, payload);
+    
+    // Emit to bus
+    telemetryBus.publish(TelemetryTopic.ATTACK_ALERT, {
+      source: 'simulation_coordinator',
+      attackType: type,
+      targetId: targetNodeId || targetIdentityId,
+      severity: 'high',
+      origin: payload.origin || 'external_actor'
+    } as AttackAlertPayload);
 
-      emitTelemetry(updates);
-      
-      return { ...prev, ...updates };
-    });
+    emitTelemetry(updates);
   }, [emitTelemetry]);
 
   const updateNodeVulnerability = useCallback((nodeId: string, vulnerability: number) => {
-    setState(prev => {
-      const newNodes = prev.nodes.map(n => n.id === nodeId ? { ...n, vulnerability } : n);
-      emitTelemetry({ nodes: newNodes });
-      return {
-        ...prev,
-        nodes: newNodes
-      };
-    });
+    const currentState = telemetryStateRef.current;
+    const newNodes = currentState.nodes.map(n => n.id === nodeId ? { ...n, vulnerability } : n);
+    emitTelemetry({ nodes: newNodes });
   }, [emitTelemetry]);
 
   const updateZoneVulnerability = useCallback((type: string, vulnerability: number) => {
-    setState(prev => {
-      const newNodes = prev.nodes.map(n => n.type === type ? { ...n, vulnerability } : n);
-      emitTelemetry({ nodes: newNodes });
-      return {
-        ...prev,
-        nodes: newNodes
-      };
-    });
+    const currentState = telemetryStateRef.current;
+    const newNodes = currentState.nodes.map(n => n.type === type ? { ...n, vulnerability } : n);
+    emitTelemetry({ nodes: newNodes });
   }, [emitTelemetry]);
 
   const launchScenario = useCallback((scenario: ScenarioType) => {
@@ -266,52 +241,32 @@ export function useSimulation() {
 
   const activateDefense = useCallback(() => {
     cleanupScenarios();
-    setState(prev => {
-      const compromisedNodes = prev.nodes.filter(n => n.status === 'compromised');
-      if (compromisedNodes.length === 0) return prev;
+    const currentState = telemetryStateRef.current;
+    const compromisedNodes = currentState.nodes.filter(n => n.status === 'compromised');
+    if (compromisedNodes.length === 0) return;
 
-      const newNodes = prev.nodes.map(n => 
-        n.status === 'compromised' ? { ...n, status: 'isolated' as NodeStatus, threatScore: 20 } : n
-      );
+    const newNodes = currentState.nodes.map(n => 
+      n.status === 'compromised' ? { ...n, status: 'isolated' as NodeStatus, threatScore: 20 } : n
+    );
 
-      const defendersEvents = compromisedNodes.map(n => 
-        TelemetryService.createEvent(`DEFENDER: Isolated compromised node ${n.id}`, 'defense', 'medium', 'system', n.id)
-      );
+    const defendersEvents = compromisedNodes.map(n => 
+      TelemetryService.createEvent(`DEFENDER: Isolated compromised node ${n.id}`, 'defense', 'medium', 'system', n.id)
+    );
 
-      const metrics = TelemetryService.calculateMetrics(newNodes);
-      return {
-        ...prev,
-        nodes: newNodes,
-        events: [...defendersEvents, ...prev.events],
-        threatLevel: metrics.threatLevel,
-        metrics,
-      };
-    });
-  }, []);
+    const metrics = TelemetryService.calculateMetrics(newNodes);
+    
+    const updates = {
+      nodes: newNodes,
+      events: defendersEvents,
+      metrics
+    };
+
+    emitTelemetry(updates);
+  }, [cleanupScenarios, emitTelemetry]);
 
   const isolateNode = useCallback((nodeId: string) => {
-    setState(prev => {
-      const node = prev.nodes.find(n => n.id === nodeId);
-      if (!node || node.status === 'isolated') return prev;
-
-      const newNodes = prev.nodes.map(n => 
-        n.id === nodeId ? { ...n, status: 'isolated' as NodeStatus, threatScore: 10 } : n
-      );
-
-      const newEvent = TelemetryService.createEvent(`DEFENDER: Manually isolated node ${node.label}`, 'defense', 'medium', 'operator', nodeId);
-      
-      const metrics = TelemetryService.calculateMetrics(newNodes);
-      const updates = {
-        nodes: newNodes,
-        events: [newEvent, ...prev.events],
-        threatLevel: metrics.threatLevel,
-        metrics,
-      };
-
-      emitTelemetry(updates);
-      return { ...prev, ...updates };
-    });
-  }, [emitTelemetry]);
+    orchestrateDefense('isolate_node', nodeId);
+  }, [orchestrateDefense]);
 
   const resetSimulation = useCallback(() => {
     const initialState = {
@@ -334,89 +289,87 @@ export function useSimulation() {
       activeDefenseModules: ['firewall'] as DefenseModule[],
     };
     
-    setState(initialState);
+    telemetryBus.publish(TelemetryTopic.UI_ACTION, {
+      action: 'REPLAY_RESET',
+      source: 'operator'
+    });
+    
     emitTelemetry(initialState);
   }, [emitTelemetry]);
 
   const setSpreadVelocity = useCallback((velocity: number) => {
-    setState(prev => {
-      emitTelemetry({ spreadVelocity: velocity });
-      return { ...prev, spreadVelocity: velocity };
-    });
+    emitTelemetry({ spreadVelocity: velocity });
     telemetryBus.publish(TelemetryTopic.SYSTEM_LOG, {
       source: 'operator',
       message: `SIMULATION: Spread velocity set to ${velocity.toFixed(2)}x`,
       severity: 'low'
     });
-  }, []);
+  }, [emitTelemetry]);
 
   const setSimulationSpeed = useCallback((speed: number) => {
-    setState(prev => ({ ...prev, simulationSpeed: speed }));
-    telemetryBus.publish(TelemetryTopic.SYSTEM_LOG, {
+    telemetryBus.publish(TelemetryTopic.UI_ACTION, {
+      action: 'SET_SIMULATION_SPEED',
       source: 'operator',
-      message: `SIMULATION: Speed adjusted to ${speed}ms`,
-      severity: 'low'
+      speed
     });
   }, []);
 
   const toggleSimulation = useCallback(() => {
-    setState(prev => ({ ...prev, isSimulating: !prev.isSimulating }));
-    telemetryBus.publish(TelemetryTopic.SYSTEM_LOG, {
-      source: 'operator',
-      message: `SIMULATION: State toggled`,
-      severity: 'low'
+    telemetryBus.publish(TelemetryTopic.UI_ACTION, {
+      action: 'TOGGLE_SIMULATION',
+      source: 'operator'
     });
   }, []);
 
   const toggleDefenseModule = useCallback((module: DefenseModule) => {
-    setState(prev => {
-      const active = prev.activeDefenseModules.includes(module);
-      const modules = active 
-        ? prev.activeDefenseModules.filter(m => m !== module)
-        : [...prev.activeDefenseModules, module];
-      
-      const newEvent = TelemetryService.createEvent(`SYSTEM: Defense module ${module.replace('_', ' ').toUpperCase()} ${active ? 'disabled' : 'enabled'}`, 'system', 'low');
-      
-      const updates = { 
-        activeDefenseModules: modules,
-        events: [newEvent, ...prev.events]
-      };
+    const currentState = telemetryStateRef.current;
+    const active = currentState.activeDefenseModules.includes(module);
+    const modules = active 
+      ? currentState.activeDefenseModules.filter(m => m !== module)
+      : [...currentState.activeDefenseModules, module];
+    
+    const newEvent = TelemetryService.createEvent(`SYSTEM: Defense module ${module.replace('_', ' ').toUpperCase()} ${active ? 'disabled' : 'enabled'}`, 'system', 'low');
+    
+    const updates = { 
+      activeDefenseModules: modules,
+      events: [newEvent]
+    };
 
-      emitTelemetry(updates);
-      return { ...prev, ...updates };
-    });
+    emitTelemetry(updates);
   }, [emitTelemetry]);
 
   useEffect(() => {
-    if (!state.isSimulating) {
+    const replayStatus = ReplayEngine.getStatus();
+    const isReplayingValue = replayStatus.isPlaying || (replayStatus.totalEvents > 0 && replayStatus.currentIndex < replayStatus.totalEvents);
+
+    if (!telemetryState.isSimulating || isReplayingValue) {
       if (timerRef.current) clearInterval(timerRef.current);
       return;
     }
 
     timerRef.current = setInterval(() => {
-      setState(prev => {
-        // 1. Check Autonomous Defense
-        const defenseUpdates = SimulationEngine.applyAutonomousDefense(prev);
-        if (defenseUpdates) {
-          emitTelemetry(defenseUpdates);
-          return { ...prev, ...defenseUpdates };
-        }
+      const currentState = telemetryStateRef.current;
+      
+      const innerReplayStatus = ReplayEngine.getStatus();
+      const innerReplayingValue = innerReplayStatus.isPlaying || (innerReplayStatus.totalEvents > 0 && innerReplayStatus.currentIndex < innerReplayStatus.totalEvents);
+      if (innerReplayingValue) return;
 
-        // 2. Process Spread
-        const spreadUpdates = SimulationEngine.processSpread(prev);
-        if (spreadUpdates) {
-          emitTelemetry(spreadUpdates);
-          return { ...prev, ...spreadUpdates };
-        }
+      const defenseUpdates = SimulationEngine.applyAutonomousDefense(currentState);
+      if (defenseUpdates) {
+        emitTelemetry(defenseUpdates);
+        return;
+      }
 
-        return prev;
-      });
-    }, state.simulationSpeed);
+      const spreadUpdates = SimulationEngine.processSpread(currentState);
+      if (spreadUpdates) {
+        emitTelemetry(spreadUpdates);
+      }
+    }, telemetryState.simulationSpeed);
 
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
     };
-  }, [state.isSimulating, state.threatLevel, state.nodes, state.simulationSpeed, state.activeDefenseModules, emitTelemetry]);
+  }, [telemetryState.isSimulating, telemetryState.simulationSpeed, emitTelemetry]);
 
   return {
     state,
@@ -424,6 +377,7 @@ export function useSimulation() {
     launchScenario,
     activateDefense,
     isolateNode,
+    orchestrateDefense,
     resetSimulation,
     setSimulationSpeed,
     toggleDefenseModule,
@@ -437,3 +391,4 @@ export function useSimulation() {
     toggleSimulation
   };
 }
+
