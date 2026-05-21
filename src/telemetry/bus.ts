@@ -22,13 +22,34 @@ class TelemetryBus {
     };
   }
 
+  private sequenceCounter = 0;
+
   publish<T>(topic: TelemetryTopic, payload: T): void {
-    const envelope: TelemetryEnvelope<T> = {
+    const seqId = this.sequenceCounter++;
+    const pl = payload as any;
+
+    const {
+      eventId, timestamp, source, target, eventType,
+      correlationId, replayVersion, deterministicSequenceId,
+      ...extraPayload
+    } = pl;
+
+    const enrichedPayload = {
+      ...pl,
+      eventId: eventId || `evt-${Math.random().toString(36).substr(2, 9)}-${seqId}`,
+      timestamp: timestamp || new Date().toISOString(),
+      source: source || 'system',
+      target: target || pl.targetId || pl.nodeId || 'global',
+      eventType: eventType || topic,
+      mutationPayload: extraPayload,
+      correlationId: correlationId || eventId || `corr-${Math.random().toString(36).substr(2, 6)}`,
+      replayVersion: replayVersion || '1.1',
+      deterministicSequenceId: deterministicSequenceId !== undefined ? deterministicSequenceId : seqId
+    };
+
+    const envelope: TelemetryEnvelope<any> = {
       topic,
-      payload: {
-        ...payload,
-        timestamp: new Date().toISOString(),
-      }
+      payload: enrichedPayload
     };
 
     // Store for replay/history

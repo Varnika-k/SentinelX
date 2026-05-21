@@ -23,6 +23,7 @@ interface GraphNodeProps {
   onMouseLeave: () => void;
   showSegmentation?: boolean;
   visualSettings?: VisualSettings;
+  hideLabel?: boolean;
 }
 
 export const GraphNode = React.memo(({ 
@@ -39,7 +40,8 @@ export const GraphNode = React.memo(({
     glow: 1,
     heatmapOpacity: 0.15,
     pulseFrequency: 1
-  }
+  },
+  hideLabel = false
 }: GraphNodeProps) => {
   const Icon = TYPE_ICONS[node.type as keyof typeof TYPE_ICONS] || Server;
   const isCompromised = node.status === 'compromised';
@@ -175,36 +177,38 @@ export const GraphNode = React.memo(({
       </AnimatePresence>
 
       {/* Label and Segment Markers */}
-      <g transform={`translate(0, 32)`}>
-         <text
-           textAnchor="middle"
-           className={cn(
-             "text-[9px] font-bold tracking-[0.2em] uppercase select-none transition-colors",
-             isCompromised ? "fill-state-danger" : isSelected ? "fill-accent-cyan" : "fill-text-secondary"
-           )}
-         >
-           {node.label}
-         </text>
-         {showSegmentation && (
+      {!hideLabel && (
+        <g transform={`translate(0, 32)`}>
            <text
              textAnchor="middle"
-             y="10"
-             className={cn("text-[6px] font-mono font-bold tracking-[0.1em] pointer-events-none select-none", getSegmentationColor())}
+             className={cn(
+               "text-[9px] font-bold tracking-[0.2em] uppercase select-none transition-colors",
+               isCompromised ? "fill-state-danger" : isSelected ? "fill-accent-cyan" : "fill-text-secondary"
+             )}
            >
-             {getSegmentationLabel()}
+             {node.label}
            </text>
-         )}
-         {isSelected && (
-           <motion.rect
-             layoutId="node-underline"
-             x="-15"
-             y="12"
-             width="30"
-             height="1.5"
-             className="fill-accent-cyan"
-           />
-         )}
-      </g>
+           {showSegmentation && (
+             <text
+               textAnchor="middle"
+               y="10"
+               className={cn("text-[6px] font-mono font-bold tracking-[0.1em] pointer-events-none select-none", getSegmentationColor())}
+             >
+               {getSegmentationLabel()}
+             </text>
+           )}
+           {isSelected && (
+             <motion.rect
+               layoutId="node-underline"
+               x="-15"
+               y="12"
+               width="30"
+               height="1.5"
+               className="fill-accent-cyan"
+             />
+           )}
+        </g>
+      )}
 
       {/* Node Framing (Precision Corners) */}
       <AnimatePresence>

@@ -29,6 +29,23 @@ export class TelemetryEventEntity {
   @Column({ type: 'varchar', nullable: true })
   attackerId: string;
 
+  @Column({ type: 'integer', nullable: true })
+  @Index()
+  deterministicSequenceId: number;
+
+  @Column({ type: 'varchar', nullable: true })
+  @Index()
+  correlationId: string;
+
+  @Column({ type: 'varchar', nullable: true })
+  replayVersion: string;
+
+  @Column({ type: 'varchar', nullable: true })
+  incidentId: string;
+
+  @Column({ type: 'varchar', nullable: true })
+  defenseActionId: string;
+
   @Column('simple-json', { nullable: true })
   payload: any;
 }

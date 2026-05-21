@@ -183,22 +183,23 @@ export class DigitalTwinEngine {
       nodes: Array.from(this.nodes.values())
     });
 
-    // Synchronously update the infrastructure details in DB
-    this.nodes.forEach(async (node) => {
-      await DatabaseService.saveInfrastructureNode({
-        name: node.name,
-        type: node.type as any,
-        status: node.status,
-        namespace: node.namespace,
-        environment: node.environment,
-        riskScore: node.riskScore,
-        metadata: {
-          cpuLoad: node.cpuLoad,
-          latency: node.latency,
-          activeConnections: node.activeConnections,
-          last_update: new Date().toISOString()
-        }
-      });
+    // Batch update the infrastructure details in DB with a single transaction
+    const nodesToSave = Array.from(this.nodes.values()).map(node => ({
+      name: node.name,
+      type: node.type as any,
+      status: node.status,
+      namespace: node.namespace,
+      environment: node.environment,
+      riskScore: node.riskScore,
+      metadata: {
+        cpuLoad: node.cpuLoad,
+        latency: node.latency,
+        activeConnections: node.activeConnections,
+        last_update: new Date().toISOString()
+      }
+    }));
+    DatabaseService.saveInfrastructureNodes(nodesToSave).catch(err => {
+      logger.error('Failed to save batch infrastructure nodes in tick', err);
     });
 
     // Save DB state every few ticks to save performance

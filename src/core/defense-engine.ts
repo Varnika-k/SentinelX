@@ -207,6 +207,10 @@ export class DefenseEngine {
   getPendingRecommendationsCount(): number {
     return this.recommendations.filter(r => r.status === 'pending').length;
   }
+
+  restoreState(recommendations: DefenseRecommendation[]): void {
+    this.recommendations = JSON.parse(JSON.stringify(recommendations));
+  }
 }
 
 export const defenseEngine = new DefenseEngine();

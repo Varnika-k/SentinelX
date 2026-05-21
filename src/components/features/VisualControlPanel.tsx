@@ -58,6 +58,33 @@ export function VisualControlPanel({ settings, onChange }: Props) {
           step={0.01}
           onChange={(v) => updateSetting('heatmapOpacity', v)} 
         />
+        <SettingSlider 
+          label="Pulse_Frequency" 
+          icon={Activity} 
+          value={settings.pulseFrequency ?? 1} 
+          min={0.1} 
+          max={5} 
+          step={0.1}
+          onChange={(v) => updateSetting('pulseFrequency', v)} 
+        />
+        <SettingSlider 
+          label="Collision_Radius" 
+          icon={Sliders} 
+          value={settings.collisionRadius ?? 25} 
+          min={10} 
+          max={100} 
+          step={1}
+          onChange={(v) => updateSetting('collisionRadius', v)} 
+        />
+        <SettingSlider 
+          label="Graph_Force" 
+          icon={Sliders} 
+          value={settings.graphForce ?? -120} 
+          min={-300} 
+          max={-20} 
+          step={5}
+          onChange={(v) => updateSetting('graphForce', v)} 
+        />
       </div>
 
       <div className="mt-4 pt-2 border-t border-border-primary/30">

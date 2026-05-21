@@ -12,7 +12,8 @@ const isProd = process.env.NODE_ENV === 'production';
 const defaultDbPath = isProd ? '/tmp/database.sqlite' : 'database.sqlite';
 
 // Neon & managed PostgreSQL connection configurations
-const postgresConfig = process.env.DATABASE_URL
+const isPlaceholderDb = process.env.DATABASE_URL?.includes("ep-cool-name-123456");
+const postgresConfig = (process.env.DATABASE_URL && !isPlaceholderDb)
   ? {
       type: "postgres" as const,
       url: process.env.DATABASE_URL,
@@ -39,7 +40,7 @@ const postgresConfig = process.env.DATABASE_URL
     }
   : null;
 
-export const AppDataSource = postgresConfig
+export let AppDataSource = postgresConfig
   ? new DataSource(postgresConfig)
   : new DataSource({
       type: "sqljs",
@@ -59,19 +60,46 @@ export const AppDataSource = postgresConfig
       subscribers: [],
     });
 
-export const initializeDatabase = async (attempts = 5, delayMs = 5000) => {
+export const initializeDatabase = async (attempts = 3, delayMs = 2000) => {
   for (let attempt = 1; attempt <= attempts; attempt++) {
     try {
       logger.info(`Database connection attempt ${attempt}/${attempts}...`);
       await AppDataSource.initialize();
       logger.info("Database connection successfully established", { 
         type: AppDataSource.options.type,
-        host: process.env.DATABASE_URL ? "managed-postgres" : "in-memory-sqljs"
+        host: postgresConfig ? "managed-postgres" : "in-memory-sqljs"
       });
       return;
     } catch (error) {
       logger.error(`Database connection attempt ${attempt} failed: ${(error as Error).message}`);
+      
       if (attempt === attempts) {
+        if (postgresConfig) {
+          logger.warn("All primary PostgreSQL connection attempts failed. Switching over to SQLJS fallback system for platform resilience.");
+          
+          AppDataSource = new DataSource({
+            type: "sqljs",
+            location: defaultDbPath,
+            autoSave: true,
+            synchronize: true,
+            logging: false,
+            entities: [
+              TelemetryEventEntity,
+              IncidentEntity,
+              ReplaySessionEntity,
+              AIReportEntity,
+              InfrastructureNodeEntity,
+              SimulationSessionEntity
+            ],
+            migrations: [],
+            subscribers: [],
+          });
+
+          await AppDataSource.initialize();
+          logger.info("Resilience database fallback successfully initialized (SQLJS/SQLite)");
+          return;
+        }
+        
         logger.error("All database connection attempts exhausted. Crashing startup.");
         throw error;
       }

@@ -23,6 +23,8 @@ export interface VisualSettings {
   glow: number;
   heatmapOpacity: number;
   pulseFrequency: number;
+  collisionRadius?: number;
+  graphForce?: number;
 }
 
 export function NetworkGraph({ 
@@ -35,12 +37,15 @@ export function NetworkGraph({
   showHeatmap = false,
   showSegmentation = false,
   showCommunicationInstability = false,
+  isReplay = false,
   visualSettings = {
     intensity: 1,
     speed: 1,
     glow: 1,
     heatmapOpacity: 0.15,
-    pulseFrequency: 1
+    pulseFrequency: 1,
+    collisionRadius: 25,
+    graphForce: -300
   }
 }: { 
   nodes: NetworkNode[], 
@@ -52,6 +57,7 @@ export function NetworkGraph({
   showHeatmap?: boolean,
   showSegmentation?: boolean,
   showCommunicationInstability?: boolean,
+  isReplay?: boolean,
   visualSettings?: VisualSettings
 }) {
   const svgRef = useRef<SVGSVGElement>(null);
@@ -92,21 +98,115 @@ export function NetworkGraph({
 
     const simulation = d3.forceSimulation<D3Node>(d3Nodes)
       .force("link", d3.forceLink<D3Node, D3Link>(d3Links).id(d => d?.id || "").distance(60))
-      .force("charge", d3.forceManyBody().strength(-300))
+      .force("charge", d3.forceManyBody().strength(visualSettings.graphForce || -300))
       .force("center", d3.forceCenter(150, 150))
-      .force("collision", d3.forceCollide().radius(25));
+      .force("collision", d3.forceCollide().radius(visualSettings.collisionRadius || 25));
 
     simulation.on("tick", () => {
-      setSimulationNodes([...d3Nodes]);
-      setSimulationLinks([...d3Links]);
+      setSimulationNodes([...simulation.nodes()]);
+      const linkForce = simulation.force("link") as d3.ForceLink<D3Node, D3Link>;
+      const currentLinks = linkForce ? (linkForce.links() || []) : [];
+      setSimulationLinks([...currentLinks]);
     });
 
     simulationRef.current = simulation;
+
+    if (isReplay) {
+      simulation.stop();
+    }
 
     return () => {
       simulation.stop();
     };
   }, []); // Run once
+
+  // Maintain precise synchronization with upstream topology deletions or additions
+  useEffect(() => {
+    if (!simulationRef.current) return;
+    const currentSimNodes = simulationRef.current.nodes();
+    const hasStructureChanged = nodes.length !== currentSimNodes.length || 
+      nodes.some(n => !currentSimNodes.some(cn => cn.id === n.id));
+
+    if (hasStructureChanged) {
+      const d3Nodes: D3Node[] = nodes.map(n => {
+        const existing = currentSimNodes.find(en => en.id === n.id);
+        return existing ? { ...existing, ...n } : { ...n };
+      });
+
+      const d3Links: D3Link[] = links
+        .map(l => {
+          if (!l) return null;
+          const sourceId = typeof l.source === 'string' ? l.source : (l.source as any)?.id;
+          const targetId = typeof l.target === 'string' ? l.target : (l.target as any)?.id;
+          
+          const sourceNode = d3Nodes.find(n => n.id === sourceId);
+          const targetNode = d3Nodes.find(n => n.id === targetId);
+          
+          if (!sourceNode || !targetNode) return null;
+          
+          return {
+            ...l,
+            source: sourceNode,
+            target: targetNode
+          };
+        })
+        .filter((l): l is D3Link => l !== null);
+
+      simulationRef.current.nodes(d3Nodes);
+      const linkForce = simulationRef.current.force("link") as d3.ForceLink<D3Node, D3Link>;
+      if (linkForce) {
+        linkForce.links(d3Links);
+      }
+
+      setSimulationNodes([...d3Nodes]);
+      setSimulationLinks([...d3Links]);
+
+      if (isReplay) {
+        simulationRef.current.stop();
+      } else {
+        simulationRef.current.alpha(0.2).restart();
+      }
+    }
+  }, [nodes, links, isReplay]);
+
+  // Freeze the simulation on replay mode transitions
+  useEffect(() => {
+    if (!simulationRef.current) return;
+    if (isReplay) {
+      simulationRef.current.stop();
+    } else {
+      simulationRef.current.alpha(0.2).restart();
+    }
+  }, [isReplay]);
+
+  // Dynamic D3 Force Sync & Velocity Synchronization in real time
+  useEffect(() => {
+    if (!simulationRef.current || isReplay) return;
+
+    const charge = simulationRef.current.force("charge") as d3.ForceManyBody<D3Node>;
+    if (charge) {
+      charge.strength(visualSettings.graphForce !== undefined ? visualSettings.graphForce : -300);
+    }
+
+    const collision = simulationRef.current.force("collision") as d3.ForceCollide<D3Node>;
+    if (collision) {
+      collision.radius(visualSettings.collisionRadius !== undefined ? visualSettings.collisionRadius : 25);
+    }
+
+    // Map Temporal_Speed to simulation settlement / alpha decay rate:
+    // Standard decay index is 0.0228. Setting speed alters friction to change how dynamically nodes settle.
+    const baseDecay = 0.0228;
+    const speedFactor = visualSettings.speed !== undefined ? visualSettings.speed : 1;
+    simulationRef.current.alphaDecay(baseDecay * speedFactor);
+
+    // Gently tick-start the simulation to animate force updates smoothly
+    simulationRef.current.alpha(0.3).restart();
+  }, [
+    visualSettings.collisionRadius,
+    visualSettings.graphForce,
+    visualSettings.speed,
+    isReplay
+  ]);
 
   // Sync statuses from props to simulation nodes
   useEffect(() => {
@@ -147,7 +247,11 @@ export function NetworkGraph({
     // Responsive centering
     const updateSize = () => {
       const { width, height } = container.getBoundingClientRect();
-      svg.call(zoomBehavior.transform, d3.zoomIdentity.translate(width / 2 - 150, height / 2 - 150).scale(1.5));
+      const currentWidth = width || 800;
+      const currentHeight = height || 600;
+      const tx = currentWidth / 2 - 225;
+      const ty = currentHeight / 2 - 225;
+      svg.call(zoomBehavior.transform, d3.zoomIdentity.translate(tx, ty).scale(1.5));
     };
 
     updateSize();
@@ -182,6 +286,60 @@ export function NetworkGraph({
 
     nodesSelection.call(dragBehavior);
   }, [simulationNodes]);
+
+  // Viewport-aware tooltip positioning system
+  const tooltipStyle = useMemo(() => {
+    if (!hoveredNode || hoveredNode.x === undefined || hoveredNode.y === undefined || !containerRef.current) {
+      return null;
+    }
+
+    const width = containerRef.current.clientWidth || 800;
+    const height = containerRef.current.clientHeight || 600;
+
+    const posX = hoveredNode.x * transform.k + transform.x;
+    const posY = hoveredNode.y * transform.k + transform.y;
+
+    const tooltipWidth = 220; 
+    const tooltipHeight = 160;
+
+    let targetLeft = posX;
+    let targetTop = posY - tooltipHeight;
+    let isBelow = false;
+
+    // Shift tooltip to are-below position if rendering too high (prevents clipping/offscreen overlaps)
+    if (targetTop < 20) {
+      targetTop = posY + 32; 
+      isBelow = true;
+    }
+
+    // Shift sideways if clipping outside horizontal viewport boundaries (15px padding margin)
+    const minLeft = tooltipWidth / 2 + 15;
+    const maxLeft = width - (tooltipWidth / 2 + 15);
+    if (targetLeft < minLeft) {
+      targetLeft = minLeft;
+    } else if (targetLeft > maxLeft) {
+      targetLeft = maxLeft;
+    }
+
+    // Vertical clamping safeguard when forced below
+    if (isBelow && targetTop + tooltipHeight > height - 15) {
+      targetTop = Math.max(15, height - tooltipHeight - 15);
+    }
+
+    // Calculate Arrow's relative offset so it points directly at the relative node position
+    const arrowOffset = posX - targetLeft;
+    const maxArrowOffset = tooltipWidth / 2 - 20;
+    const arrowLeft = `calc(50% + ${Math.max(-maxArrowOffset, Math.min(maxArrowOffset, arrowOffset))}px)`;
+
+    return {
+      left: targetLeft,
+      top: targetTop,
+      arrowLeft,
+      arrowClass: isBelow 
+        ? "top-[-6px] border-l border-t border-border-bright/30 rotate-45" 
+        : "bottom-[-6px] border-r border-b border-border-bright/30 rotate-45"
+    };
+  }, [hoveredNode, transform, simulationNodes]);
 
   return (
     <div ref={containerRef} className="relative w-full h-full bg-void overflow-hidden">
@@ -276,44 +434,52 @@ export function NetworkGraph({
           ))}
 
           {/* Nodes */}
-          {simulationNodes.map(node => (
-            <g 
-              key={node.id} 
-              className={cn(
-                "transition-all duration-1000",
-                (node as any).isDimmed ? "opacity-15 pointer-events-none filter blur-[1px]" : "opacity-100"
-              )}
-            >
-              <GraphNode 
-                node={node}
-                isSelected={selectedNodeId === node.id}
-                isHighlighted={highlightedNodeId === node.id}
-                onNodeClick={onNodeClick}
-                onMouseEnter={handleMouseEnter}
-                onMouseLeave={handleMouseLeave}
-                showSegmentation={showSegmentation}
-                visualSettings={visualSettings}
-              />
-            </g>
-          ))}
+          {simulationNodes.map(node => {
+            const shouldHideLabel = transform.k < 1.15 && 
+              node.status !== 'compromised' && 
+              selectedNodeId !== node.id && 
+              highlightedNodeId !== node.id;
+
+            return (
+              <g 
+                key={node.id} 
+                className={cn(
+                  "transition-all duration-1000",
+                  (node as any).isDimmed ? "opacity-15 pointer-events-none filter blur-[1px]" : "opacity-100"
+                )}
+              >
+                <GraphNode 
+                  node={node}
+                  isSelected={selectedNodeId === node.id}
+                  isHighlighted={highlightedNodeId === node.id}
+                  onNodeClick={onNodeClick}
+                  onMouseEnter={handleMouseEnter}
+                  onMouseLeave={handleMouseLeave}
+                  showSegmentation={showSegmentation}
+                  visualSettings={visualSettings}
+                  hideLabel={shouldHideLabel}
+                />
+              </g>
+            );
+          })}
         </g>
       </svg>
 
       {/* Node Tooltip */}
       <AnimatePresence>
-        {hoveredNode && hoveredNode.x !== undefined && hoveredNode.y !== undefined && (
+        {hoveredNode && tooltipStyle && (
           <motion.div
             initial={{ opacity: 0, scale: 0.95, y: 10 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 10 }}
-            className="absolute z-50 pointer-events-none p-4 glass-panel min-w-[200px] shadow-2xl"
+            className="absolute z-50 pointer-events-none p-4 glass-panel min-w-[220px] shadow-2xl"
             style={{ 
-              left: hoveredNode.x * transform.k + transform.x,
-              top: hoveredNode.y * transform.k + transform.y - 140, // Offset above node
+              left: tooltipStyle.left,
+              top: tooltipStyle.top,
               transform: 'translateX(-50%)' 
             }}
           >
-            <div className="space-y-3">
+            <div className="space-y-3 pb-1">
               <div className="flex items-center justify-between border-b border-border pb-2 mb-2">
                 <div className="flex items-center gap-2">
                    {hoveredNode.status === 'safe' && <ShieldCheck size={12} className="text-state-safe" />}
@@ -352,7 +518,10 @@ export function NetworkGraph({
             </div>
             
             {/* Tooltip Arrow */}
-            <div className="absolute bottom-[-6px] left-1/2 -translate-x-1/2 w-3 h-3 bg-panel border-r border-b border-border-bright/30 rotate-45" />
+            <div 
+              className={cn("absolute w-3 h-3 bg-panel", tooltipStyle.arrowClass)}
+              style={{ left: tooltipStyle.arrowLeft, transform: 'translateX(-50%) rotate(45deg)' }}
+            />
           </motion.div>
         )}
       </AnimatePresence>

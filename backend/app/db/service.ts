@@ -27,15 +27,25 @@ export class DatabaseService {
 
   static async saveSimulationSession(session: Partial<SimulationSessionEntity>) {
     try {
+      if (session.stateCheckpoint && Array.isArray(session.stateCheckpoint)) {
+        if (session.stateCheckpoint.length > 3) {
+          session.stateCheckpoint = session.stateCheckpoint.slice(0, 3);
+        }
+      }
+
       if (session.id) {
         const existing = await this.simulationRepo.findOneBy({ id: session.id });
         if (existing) {
           this.simulationRepo.merge(existing, session);
-          return await this.simulationRepo.save(existing);
+          const saved = await this.simulationRepo.save(existing);
+          await this.pruneTelemetryAndSessions();
+          return saved;
         }
       }
       const newSession = this.simulationRepo.create(session);
-      return await this.simulationRepo.save(newSession);
+      const saved = await this.simulationRepo.save(newSession);
+      await this.pruneTelemetryAndSessions();
+      return saved;
     } catch (err) {
       logger.error('Failed to save simulation session', err);
     }
@@ -47,6 +57,36 @@ export class DatabaseService {
 
   static async getSimulationSession(id: string) {
     return await this.simulationRepo.findOneBy({ id });
+  }
+
+  static async saveInfrastructureNodes(nodes: Partial<InfrastructureNodeEntity>[]) {
+    try {
+      const names = nodes.map(n => n.name).filter(Boolean) as string[];
+      if (names.length === 0) return [];
+
+      const existingNodes = await this.infraRepo.find();
+      const existingMap = new Map(existingNodes.map(n => [n.name, n]));
+
+      const toSave: InfrastructureNodeEntity[] = [];
+      for (const node of nodes) {
+        if (!node.name) continue;
+        const existing = existingMap.get(node.name);
+        if (existing) {
+          this.infraRepo.merge(existing, node);
+          toSave.push(existing);
+        } else {
+          toSave.push(this.infraRepo.create(node));
+        }
+      }
+
+      if (toSave.length > 0) {
+        return await this.infraRepo.save(toSave);
+      }
+      return [];
+    } catch (err) {
+      logger.error('Failed to save batch infrastructure nodes', err);
+      return [];
+    }
   }
 
   static async saveInfrastructureNode(node: Partial<InfrastructureNodeEntity>) {
@@ -120,6 +160,7 @@ export class DatabaseService {
 
     try {
       await this.telemetryRepo.save(batch);
+      await this.pruneTelemetryAndSessions();
     } catch (error) {
       logger.error(`Critical telemetry batch save failed. Executing graceful self-recovering individual writes...`, error);
       // Save individually to avoid complete packet drops
@@ -177,5 +218,43 @@ export class DatabaseService {
     const session = await this.replayRepo.findOneBy({ id: sessionId });
     if (!session) return [];
     return await this.getEventsInRange(session.startTime, session.endTime);
+  }
+
+  static async pruneTelemetryAndSessions() {
+    try {
+      if (AppDataSource.options.type === 'sqljs') {
+        const telemetryCount = await this.telemetryRepo.count();
+        if (telemetryCount > 250) {
+          const latestEvents = await this.telemetryRepo.find({
+            order: { timestamp: 'DESC' },
+            take: 120
+          });
+          const idsToKeep = latestEvents.map(e => e.id);
+          if (idsToKeep.length > 0) {
+            await this.telemetryRepo.createQueryBuilder()
+              .delete()
+              .where("id NOT IN (:...ids)", { ids: idsToKeep })
+              .execute();
+          }
+        }
+
+        const sessionCount = await this.simulationRepo.count();
+        if (sessionCount > 10) {
+          const latestSessions = await this.simulationRepo.find({
+            order: { updatedAt: 'DESC' },
+            take: 4
+          });
+          const idsToKeep = latestSessions.map(s => s.id);
+          if (idsToKeep.length > 0) {
+            await this.simulationRepo.createQueryBuilder()
+              .delete()
+              .where("id NOT IN (:...ids)", { ids: idsToKeep })
+              .execute();
+          }
+        }
+      }
+    } catch (err) {
+      logger.error('Database pruning failed', err);
+    }
   }
 }

@@ -7,6 +7,7 @@ import { TelemetryService } from '../core/telemetry-service';
 import { telemetryClient } from './client';
 import { TelemetryProcessor } from './processor';
 import { ingestionManager } from './ingestion-manager';
+import { ReplayEngine } from './replay';
 
 /**
  * TelemetryStore
@@ -52,7 +53,19 @@ export function useTelemetryStore() {
     setState(prev => {
       let nextState = prev;
       for (const envelope of batch) {
-        nextState = TelemetryProcessor.process(nextState, envelope);
+        if (envelope.topic === TelemetryTopic.UI_ACTION && envelope.payload?.action === 'REPLAY_STATE_RESTORE') {
+          // Bypass normal processors and directly restore the full historical state
+          nextState = envelope.payload.state;
+        } else {
+          nextState = TelemetryProcessor.process(nextState, envelope);
+
+          // If recordable live event, cache state snapshot to stabilize seek requests
+          if (envelope.topic !== TelemetryTopic.METRIC_TICK && 
+              envelope.topic !== TelemetryTopic.UI_ACTION && 
+              !envelope.payload?._isReplay) {
+            ReplayEngine.recordSnapshotForEnvelope(envelope, nextState);
+          }
+        }
       }
       return nextState;
     });
@@ -61,6 +74,9 @@ export function useTelemetryStore() {
   }, []);
 
   useEffect(() => {
+    // Sync initial clean state with ReplayEngine for root reverts
+    ReplayEngine.setInitialState(state);
+
     // Start WebSocket connection
     telemetryClient.connect();
     setConnectionStatus('reconnecting');

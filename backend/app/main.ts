@@ -255,44 +255,61 @@ export class SentinelBackend {
       }
     });
 
-    // Placeholder for other API modules
-    this.app.get('/api/v1/system/status', (req, res) => {
-      res.json({
-        engine: 'SentinelX Core',
-        version: '2.0.0-alpha',
-        telemetry: 'active'
-      });
+    // Handle API 404 (Endpoint Not Found) so we never return raw index.html block on API misses
+    this.app.use('/api', (req, res) => {
+      res.status(404).json({ error: `API route '${req.originalUrl}' not found.` });
     });
   }
 
   public async start() {
-    // Database Initialization
-    await initializeDatabase();
-
-    // Background Worker Initialization
-    await TelemetryWorker.start();
-
     // Vite Integration
     if (!this.isProd) {
       const vite = await createViteServer({
         server: { middlewareMode: true },
         appType: 'spa',
       });
-      this.app.use(vite.middlewares);
+      // Bypass Vite SPA fallback for API calls to prevent HTML answers
+      this.app.use((req, res, next) => {
+        if (req.path.startsWith('/api/')) {
+          return next();
+        }
+        vite.middlewares(req, res, next);
+      });
       logger.info('Vite development middleware mounted');
     } else {
       const distPath = path.join(process.cwd(), 'dist');
       this.app.use(express.static(distPath));
-      this.app.get('*', (req, res) => {
+      this.app.get('*', (req, res, next) => {
+        if (req.path.startsWith('/api/')) {
+          return next();
+        }
         res.sendFile(path.join(distPath, 'index.html'));
       });
       logger.info('Serving production static files');
     }
 
+    // Bind and start listening immediately so Cloud Run ingress checks and TCP probes pass
     this.server.listen(this.port, '0.0.0.0', () => {
-      logger.info(`SENTINEL_X_BACKEND initialized core systems on port ${this.port}`);
-      this.telemetry.start();
-      cloudTelemetryService.start();
+      logger.info(`SENTINEL_X_BACKEND successfully bound port ${this.port}. Active ingress channel open.`);
+      
+      // Perform background service activation asynchronously
+      (async () => {
+        try {
+          // 1. Initialize persistent storage
+          await initializeDatabase();
+          
+          // 2. Start high-frequency background telemetry processor
+          await TelemetryWorker.start();
+          
+          // 3. Initiate local and cloud indicators
+          this.telemetry.start();
+          cloudTelemetryService.start();
+          
+          logger.info('SentinelX active defense analytics, incident reconciliation, and core telemetry ingestion fully engaged.');
+        } catch (error) {
+          logger.error('CRITICAL: Background ingestion worker chain initialization failed.', error);
+        }
+      })();
     });
   }
 }

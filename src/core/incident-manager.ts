@@ -122,6 +122,22 @@ export class IncidentManager {
     incident.lastUpdateTime = new Date();
   }
 
+  restoreState(incidents: Incident[]): void {
+    this.incidents.clear();
+    incidents.forEach(inc => {
+      this.incidents.set(inc.id, {
+        ...inc,
+        detectionTime: new Date(inc.detectionTime),
+        lastUpdateTime: new Date(inc.lastUpdateTime),
+        resolvedTime: inc.resolvedTime ? new Date(inc.resolvedTime) : undefined,
+        events: inc.events.map(e => ({
+          ...e,
+          timestamp: e.timestamp ? new Date(e.timestamp) : undefined
+        }))
+      });
+    });
+  }
+
   getIncidents(): Incident[] {
     return Array.from(this.incidents.values()).sort((a, b) => b.lastUpdateTime.getTime() - a.lastUpdateTime.getTime());
   }

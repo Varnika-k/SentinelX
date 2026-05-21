@@ -16,6 +16,7 @@ import { telemetryBus } from './bus';
 import { TelemetryTopic } from './schemas';
 import { logger } from '../lib/logger';
 import { CONFIG } from '../config';
+import { ReplayEngine } from './replay';
 
 export class EnterpriseIngestionManager {
   private connectors: TelemetryConnector[] = [];
@@ -90,6 +91,9 @@ export class EnterpriseIngestionManager {
   }
 
   private async pollAll() {
+    if (ReplayEngine.isHistoricalMode()) {
+      return;
+    }
     const start = Date.now();
     const rawEvents: RawTelemetryEvent[] = [];
     

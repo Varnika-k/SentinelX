@@ -34,6 +34,7 @@ interface SimulatedNode {
   latency: number;
   activeConnections: number;
   riskScore: number;
+  relationships?: string[];
 }
 
 export function DigitalTwinDashboard({ onHighlightNode }: DigitalTwinDashboardProps) {
@@ -46,6 +47,7 @@ export function DigitalTwinDashboard({ onHighlightNode }: DigitalTwinDashboardPr
   const [nodes, setNodes] = useState<SimulatedNode[]>([]);
   
   // Interactive UI panel states
+  const [expandedNodeId, setExpandedNodeId] = useState<string | null>(null);
   const [selectedScenario, setSelectedScenario] = useState<string>('ransomware');
   const [whatIfNode, setWhatIfNode] = useState<string>('k8s-pod-auth-api-559b');
   const [whatIfData, setWhatIfData] = useState<any>(null);
@@ -274,76 +276,172 @@ export function DigitalTwinDashboard({ onHighlightNode }: DigitalTwinDashboardPr
               Awaiting Digital Twin initialization...
             </div>
           ) : (
-            nodes.map((node) => (
-              <div 
-                key={node.id} 
-                className={cn(
-                  "p-2.5 border rounded-sm transition-all group relative",
-                  node.status === 'infected' ? "bg-state-danger/10 border-state-danger/50" :
-                  node.status === 'critical' ? "bg-state-warning/10 border-state-warning/50" :
-                  node.status === 'isolated' ? "bg-accent-blue/5 border-border-bright/20 opacity-60" :
-                  "bg-void/40 border-border"
-                )}
-                onMouseEnter={() => onHighlightNode && onHighlightNode(node.name)}
-                onMouseLeave={() => onHighlightNode && onHighlightNode(null)}
-              >
-                <div className="flex items-center justify-between mb-1.5">
-                  <div className="flex flex-col">
-                    <span className="font-bold text-white font-mono tracking-tight group-hover:text-accent-cyan transition-colors">{node.name}</span>
-                    <span className="text-[7px] text-text-tertiary font-mono tracking-widest uppercase">{node.type} | {node.namespace}</span>
-                  </div>
-                  <span className={cn(
-                    "text-[8px] font-bold font-mono uppercase px-1.5 py-0.5 rounded-sm shrink-0",
-                    node.status === 'infected' ? "bg-state-danger/20 text-state-danger animate-pulse" :
-                    node.status === 'critical' ? "bg-state-warning/20 text-state-warning" :
-                    node.status === 'isolated' ? "bg-accent-blue/30 text-accent-cyan" :
-                    "bg-state-safe/20 text-state-safe"
-                  )}>
-                    {node.status}
-                  </span>
-                </div>
+            nodes.map((node) => {
+              const isExpanded = expandedNodeId === node.id;
+              // Compute resilience score
+              const resilienceScore = Math.max(10, 100 - Math.round(node.riskScore * 2.2));
+              
+              return (
+                <div 
+                  key={node.id} 
+                  className={cn(
+                    "cursor-pointer border rounded-sm bg-[#04060b]/40 transition-all duration-300 group relative overflow-hidden",
+                    node.status === 'infected' ? "border-rose-500/30 hover:border-rose-500/50 shadow-[0_0_15px_rgba(239,68,68,0.05)]" :
+                    node.status === 'critical' ? "border-amber-500/30 hover:border-amber-500/50 shadow-[0_0_15px_rgba(245,158,11,0.05)]" :
+                    node.status === 'isolated' ? "border-sky-500/25 hover:border-sky-500/40 opacity-70" :
+                    "border-white/5 hover:border-accent-cyan/30"
+                  )}
+                  onClick={() => {
+                    setExpandedNodeId(isExpanded ? null : node.id);
+                    if (onHighlightNode) {
+                      onHighlightNode(isExpanded ? null : node.name);
+                    }
+                  }}
+                  onMouseEnter={() => !isExpanded && onHighlightNode && onHighlightNode(node.name)}
+                  onMouseLeave={() => !isExpanded && onHighlightNode && onHighlightNode(null)}
+                >
+                  {/* Subtle top decoration bar */}
+                  <div className={cn(
+                    "absolute top-0 left-0 right-0 h-[1.5px] transition-all",
+                    node.status === 'infected' ? "bg-rose-500/50" :
+                    node.status === 'critical' ? "bg-amber-500/50" :
+                    node.status === 'isolated' ? "bg-sky-500/30" :
+                    "bg-transparent group-hover:bg-accent-cyan/20"
+                  )} />
 
-                <div className="grid grid-cols-3 gap-3 text-[8px] font-mono text-text-secondary">
-                  <div>
-                    <span className="opacity-50 block text-[6px] text-text-tertiary">CPU Load</span>
-                    <span className="font-bold text-white">{Math.round(node.cpuLoad)}%</span>
-                  </div>
-                  <div>
-                    <span className="opacity-50 block text-[6px] text-text-tertiary">Latency</span>
-                    <span className="font-bold text-white">{node.latency}ms</span>
-                  </div>
-                  <div>
-                    <span className="opacity-50 block text-[6px] text-text-tertiary">Flow Rate</span>
-                    <span className="font-bold text-white">{node.activeConnections} c/s</span>
-                  </div>
-                </div>
+                  <div className="p-2.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex flex-col min-w-0">
+                        <span className="font-bold text-white font-mono text-[9px] tracking-tight truncate group-hover:text-accent-cyan transition-colors">{node.name}</span>
+                        <span className="text-[6.5px] text-text-tertiary font-mono tracking-[0.1em] uppercase mt-0.5">{node.type} • {node.namespace}</span>
+                      </div>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <span className={cn(
+                          "text-[7px] font-bold font-mono tracking-wider uppercase px-1.5 py-0.5 rounded-sm flex items-center gap-1",
+                          node.status === 'infected' ? "bg-rose-500/10 text-rose-400 border border-rose-500/20 animate-pulse" :
+                          node.status === 'critical' ? "bg-amber-500/10 text-amber-400 border border-amber-500/20" :
+                          node.status === 'isolated' ? "bg-sky-500/10 text-sky-400 border border-sky-500/20" :
+                          "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
+                        )}>
+                          {node.status === 'infected' && <span className="w-1 h-1 rounded-full bg-rose-500 animate-ping" />}
+                          {node.status}
+                        </span>
+                      </div>
+                    </div>
 
-                {/* Micro Actions Overlay */}
-                <div className="mt-2 pt-2 border-t border-border/30 flex gap-2 invisible group-hover:visible transition-all">
-                  <button
-                    disabled={node.status === 'isolated'}
-                    onClick={() => handleNodeAction(node.name, 'isolate')}
-                    className="flex-1 py-1 text-[7px] font-bold bg-accent-blue/20 hover:bg-accent-blue/40 text-accent-cyan border border-accent-blue/30 rounded-sm cursor-pointer disabled:opacity-40"
-                  >
-                    Isolate
-                  </button>
-                  <button
-                    disabled={node.status === 'isolated'}
-                    onClick={() => handleNodeAction(node.name, 'scale')}
-                    className="flex-1 py-1 text-[7px] font-bold bg-state-safe/10 hover:bg-state-safe/25 text-state-safe border border-state-safe/30 rounded-sm cursor-pointer disabled:opacity-40"
-                  >
-                    Scale_Up
-                  </button>
-                  <button
-                    disabled={node.status === 'isolated'}
-                    onClick={() => handleNodeAction(node.name, 'chaos')}
-                    className="flex-1 py-1 text-[7px] font-bold bg-state-warning/10 hover:bg-state-warning/25 text-state-warning border border-state-warning/30 rounded-sm cursor-pointer disabled:opacity-40"
-                  >
-                    Inject_Chaos
-                  </button>
+                    <div className="grid grid-cols-3 gap-2 text-[8px] font-mono mt-2.5 pt-2 border-t border-white/5 text-text-secondary">
+                      <div>
+                        <span className="opacity-40 block text-[5px] text-text-tertiary uppercase tracking-wider">CPU Util</span>
+                        <span className="font-bold text-white flex items-center gap-1"><Cpu size={7} className="text-text-tertiary" /> {Math.round(node.cpuLoad)}%</span>
+                      </div>
+                      <div>
+                        <span className="opacity-40 block text-[5px] text-text-tertiary uppercase tracking-wider">RT Latency</span>
+                        <span className="font-bold text-white flex items-center gap-1"><Gauge size={7} className="text-text-tertiary" /> {node.latency}ms</span>
+                      </div>
+                      <div>
+                        <span className="opacity-40 block text-[5px] text-text-tertiary uppercase tracking-wider">Conns Flow</span>
+                        <span className="font-bold text-white flex items-center gap-1"><Activity size={7} className="text-text-tertiary" /> {node.activeConnections}_c/s</span>
+                      </div>
+                    </div>
+
+                    {/* Smooth Expandable Contextual Panel */}
+                    <AnimatePresence initial={false}>
+                      {isExpanded && (
+                        <motion.div
+                          initial={{ height: 0, opacity: 0, marginTop: 0 }}
+                          animate={{ height: "auto", opacity: 1, marginTop: 10 }}
+                          exit={{ height: 0, opacity: 0, marginTop: 0 }}
+                          transition={{ duration: 0.25, ease: "easeInOut" }}
+                          className="overflow-hidden border-t border-dashed border-white/5 pt-2.5 flex flex-col gap-2"
+                          onClick={(e) => e.stopPropagation()} // Prevent card collapse on click inner actions
+                        >
+                          {/* Live Risk & Resilience HUD */}
+                          <div className="grid grid-cols-2 gap-2 text-[7.5px] font-mono bg-void/50 p-2 rounded-sm border border-white/5">
+                            <div>
+                              <div className="flex justify-between items-center mb-1">
+                                <span className="text-text-tertiary uppercase text-[6px]">Calculated Risk</span>
+                                <span className={cn("font-bold", node.riskScore > 20 ? "text-rose-450" : "text-amber-400")}>{node.riskScore}_PTS</span>
+                              </div>
+                              <div className="w-full bg-white/5 h-1.5 rounded-full overflow-hidden">
+                                <div className={cn("h-full rounded-full", node.status === 'infected' ? 'bg-rose-500' : 'bg-amber-500')} style={{ width: `${Math.min(100, node.riskScore * 2.5)}%` }} />
+                              </div>
+                            </div>
+                            <div>
+                              <div className="flex justify-between items-center mb-1">
+                                <span className="text-text-tertiary uppercase text-[6px]">Resilience Index</span>
+                                <span className="font-bold text-emerald-400">{resilienceScore}%</span>
+                              </div>
+                              <div className="w-full bg-white/5 h-1.5 rounded-full overflow-hidden">
+                                <div className="h-full bg-emerald-500 rounded-full" style={{ width: `${resilienceScore}%` }} />
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Dependency Chain Display */}
+                          <div className="flex flex-col gap-1 text-[7px] font-mono">
+                            <span className="text-[6px] uppercase text-text-tertiary tracking-wider font-bold">Dependency Relations Chain</span>
+                            <div className="flex flex-wrap gap-1 mt-0.5">
+                              {node.relationships && node.relationships.length > 0 ? (
+                                node.relationships.map((rel, rIdx) => (
+                                  <span 
+                                    key={rIdx} 
+                                    className="bg-white/5 text-text-secondary px-1.5 py-0.5 rounded-sm border border-white/5 max-w-[150px] truncate hover:text-accent-cyan transition-colors"
+                                    title={rel}
+                                  >
+                                    → {rel}
+                                  </span>
+                                ))
+                              ) : (
+                                <span className="text-text-tertiary/60 italic text-[6.5px]">Isolated workload - no active external dependencies</span>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Active Attack / Simulation Details */}
+                          <div className="text-[7.5px] font-mono p-1.5 bg-black/40 border border-white/5 rounded-sm flex items-start gap-1.5">
+                            <Flame size={10} className={cn("shrink-0 mt-0.5", node.status === 'infected' ? "text-rose-400 animate-pulse" : (node.status === 'critical' ? "text-amber-400 animate-pulse" : "text-text-tertiary"))} />
+                            <div className="flex-1 min-w-0">
+                              <span className="text-[6.5px] uppercase text-text-tertiary block font-bold">Active Chaos/Exploit Thread</span>
+                              <p className="text-text-secondary leading-normal mt-0.5">
+                                {node.status === 'infected' && `CAMPAIGN TRAVERSAL: Active lateral compromise detected. Workload infected.`}
+                                {node.status === 'critical' && `SECURITY EVENT: Credential stuffing breach. High load, abnormal traffic rate.`}
+                                {node.status === 'isolated' && `QUARANTINE ENFORCED: Airgap active. Workload interfaces fully locked.`}
+                                {node.status === 'healthy' && `STEADY STATE: Zero exceptions reported. Node health verification positive.`}
+                              </p>
+                            </div>
+                          </div>
+
+                          {/* Micro Actions Panel inside expansion */}
+                          <div className="pt-2 border-t border-white/5 flex gap-1.5">
+                            <button
+                              disabled={node.status === 'isolated'}
+                              onClick={() => handleNodeAction(node.name, 'isolate')}
+                              className="flex-1 py-1 text-[7.5px] font-bold bg-accent-blue/15 hover:bg-accent-blue/35 text-accent-cyan border border-accent-blue/20 rounded-sm cursor-pointer disabled:opacity-40 font-mono transition-colors"
+                            >
+                              Isolate
+                            </button>
+                            <button
+                              disabled={node.status === 'isolated'}
+                              onClick={() => handleNodeAction(node.name, 'scale')}
+                              className="flex-1 py-1 text-[7.5px] font-bold bg-state-safe/10 hover:bg-state-safe/25 text-emerald-400 border border-state-safe/20 rounded-sm cursor-pointer disabled:opacity-40 font-mono transition-colors"
+                            >
+                              Scale_Up
+                            </button>
+                            <button
+                              disabled={node.status === 'isolated'}
+                              onClick={() => handleNodeAction(node.name, 'chaos')}
+                              className="flex-1 py-1 text-[7.5px] font-bold bg-state-warning/10 hover:bg-state-warning/20 text-amber-400 border border-state-warning/10 rounded-sm cursor-pointer disabled:opacity-40 font-mono transition-colors"
+                            >
+                              Inject_Chaos
+                            </button>
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
                 </div>
-              </div>
-            ))
+              );
+            })
           )}
         </div>
       </div>

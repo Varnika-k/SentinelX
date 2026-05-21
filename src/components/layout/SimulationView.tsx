@@ -1,5 +1,8 @@
 import { useState, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
+import { telemetryBus } from '../../telemetry/bus';
+import { TelemetryTopic } from '../../telemetry/schemas';
+import { ReplayEngine, ReplayStatus } from '../../telemetry/replay';
 import { 
   Shield, Network, LogOut, HelpCircle, Settings, Layout, Zap, BrainCircuit, 
   Activity as ActivityIcon, Maximize2, Minimize2, Filter, Clock, Compass, 
@@ -9,6 +12,7 @@ import { cn } from '../../lib/utils';
 import { NetworkNode } from '../../types/network';
 import { SimulationState } from '../../types/simulation';
 import { NetworkGraph } from '../viz/NetworkGraph';
+import { AttackTimeline } from './AttackTimeline';
 import { ControlPanel } from '../features/ControlPanel';
 import { EventPanel } from '../features/EventPanel';
 import { MetricsPanel } from '../features/MetricsPanel';
@@ -72,6 +76,8 @@ export function SimulationView({
 }: SimulationViewProps) {
   const [highlightedNodeId, setHighlightedNodeId] = useState<string | null>(null);
   const [showVisualSettings, setShowVisualSettings] = useState(false);
+  const [activeWorkspace, setActiveWorkspace] = useState<'operations' | 'forensics' | 'defense' | 'twin' | 'ai'>('operations');
+  const [activeNodeTab, setActiveNodeTab] = useState<'details' | 'ai' | 'analytics'>('details');
   const [activeSidePanel, setActiveSidePanel] = useState<'details' | 'ai' | 'analytics' | 'defense' | 'identity' | 'intelligence' | 'ops' | 'twin'>('twin');
   const [showSOC, setShowSOC] = useState(false);
   const [visualSettings, setVisualSettings] = useState<VisualSettings>({
@@ -79,7 +85,9 @@ export function SimulationView({
     speed: 1,
     glow: 1,
     heatmapOpacity: 0.15,
-    pulseFrequency: 1
+    pulseFrequency: 1,
+    collisionRadius: 25,
+    graphForce: -120
   });
 
   // State Extensions
@@ -88,6 +96,22 @@ export function SimulationView({
   const [utcTime, setUtcTime] = useState('');
   const [showSegmentation, setShowSegmentation] = useState(false);
   const [showCommunicationInstability, setShowCommunicationInstability] = useState(false);
+
+  const [replayStatus, setReplayStatus] = useState<ReplayStatus>(ReplayEngine.getStatus());
+
+  useEffect(() => {
+    const unsubStatus = telemetryBus.subscribe(TelemetryTopic.UI_ACTION, (env) => {
+      const payload = env.payload as any;
+      if (payload.action === 'REPLAY_STATUS' && payload.source === 'replay_engine') {
+        setReplayStatus(payload.payload);
+      }
+    });
+    return unsubStatus;
+  }, []);
+
+  const isHistoricalMode = useMemo(() => {
+    return replayStatus.isPlaying || (replayStatus.totalEvents > 0 && replayStatus.currentIndex < replayStatus.totalEvents);
+  }, [replayStatus]);
 
   // UTC Ticking Clock
   useEffect(() => {
@@ -433,345 +457,758 @@ export function SimulationView({
 
       <ThreatBanner level={simulationState.threatLevel} />
 
-      <div className="flex-1 flex overflow-hidden">
-        {/* Command Side - Dynamic Progressive Disclosure Layout */}
-        <AnimatePresence>
+      {isHistoricalMode && (
+        <div className="bg-amber-950/25 border-b border-amber-500/35 px-6 py-2 flex items-center justify-between text-xs font-mono text-amber-400 select-none animate-pulse z-40 shrink-0">
+          <div className="flex items-center gap-3">
+            <span className="flex h-2 w-2 relative">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
+            </span>
+            <div className="flex items-center gap-2">
+              <span className="font-bold tracking-widest text-[10px] bg-amber-500/20 px-1.5 py-0.5 rounded text-amber-300 border border-amber-500/30">HISTORICAL WORKLOAD RECONSTRUCTION WORKING</span>
+              <span className="text-[9.5px] opacity-80">Telemetry flow suspended • Simulation mutations isolated</span>
+            </div>
+          </div>
+          
+          <div className="flex items-center gap-6">
+            <div className="flex items-center gap-1.5 bg-black/40 border border-white/5 rounded px-2 py-0.5 text-[10px]">
+              <span className="text-text-tertiary font-bold">SEQUENCE_INDEX:</span>
+              <span className="text-white font-extrabold">{replayStatus.currentIndex} / {replayStatus.totalEvents}</span>
+            </div>
+            
+            <div className="flex items-center gap-1.5 bg-black/40 border border-white/5 rounded px-2 py-0.5 text-[10px]">
+              <span className="text-text-tertiary font-bold">TEMPORAL_CAPSULE:</span>
+              <span className="text-accent-cyan font-bold leading-none">
+                {simulationState.events[replayStatus.currentIndex - 1]?.timestamp 
+                  ? new Date(simulationState.events[replayStatus.currentIndex - 1].timestamp).toUTCString().replace('GMT', 'UTC')
+                  : 'BOOT_STATE_RECORD'}
+              </span>
+            </div>
+            
+            <div className="flex items-center gap-1.5 bg-black/40 border border-white/5 rounded px-2 py-0.5 text-[10px]">
+              <span className="text-text-tertiary">INFRA_INTEGRITY:</span>
+              <span className="text-rose-400 font-bold">{platformIntegrity}%</span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ELITE OPERATIONAL WORKSPACE SWITCHER */}
+      <div className="h-11 border-b border-border bg-panel/30 flex items-center justify-between px-6 shrink-0 relative z-40">
+        <div className="flex items-center gap-1 h-full">
+          {[
+            { id: 'operations', label: 'OPERATIONS MAP', icon: Network },
+            { id: 'forensics', label: 'INCIDENT & FORENSIC', icon: Clock },
+            { id: 'defense', label: 'DEFENSE ORCHESTRATION', icon: Shield },
+            { id: 'twin', label: 'DIGITAL TWIN LAB', icon: Zap },
+            { id: 'ai', label: 'AI INTELLIGENCE', icon: BrainCircuit }
+          ].map((ws) => {
+            const Icon = ws.icon;
+            const isActive = activeWorkspace === ws.id;
+            return (
+              <button
+                key={ws.id}
+                onClick={() => {
+                  setActiveWorkspace(ws.id as any);
+                  onSelectNode(null); // Reset detail selections for workspaces cleaner transition
+                }}
+                className={cn(
+                  "flex items-center gap-2 px-4 h-full text-[9px] font-mono tracking-widest font-bold uppercase transition-all relative border-r border-border/10",
+                  isActive 
+                    ? "text-accent-cyan bg-accent-cyan/10 shadow-[inner_0_0_12px_rgba(0,255,209,0.05)] font-black" 
+                    : "text-text-secondary hover:text-text-primary hover:bg-white/5"
+                )}
+              >
+                <Icon size={12} />
+                <span>{ws.label}</span>
+                {isActive && (
+                  <motion.span 
+                    layoutId="activeWorkspaceBorder" 
+                    className="absolute bottom-0 left-0 right-0 h-[2px] bg-accent-cyan shadow-[0_0_8px_#00FFD1]" 
+                  />
+                )}
+              </button>
+            );
+          })}
+        </div>
+        
+        <div className="flex items-center gap-4 text-[9px] font-mono">
+          <div className="flex items-center gap-1.5 bg-black/40 border border-border/80 px-3 py-1 rounded">
+            <span className="text-text-tertiary">DOMAIN:</span>
+            <span className="text-white font-extrabold uppercase tracking-widest">{activeWorkspace}_domain</span>
+          </div>
+        </div>
+      </div>
+
+      {/* WORKSPACE ROUTING VIEW */}
+      <div className="flex-1 flex overflow-hidden relative">
+        {/* Dynamic Left Sidebar Overlay Panel */}
+        <AnimatePresence mode="wait">
           {!isFullscreen && (
             <motion.div 
-              initial={{ width: 0, opacity: 0 }}
-              animate={{ width: 420, opacity: 1 }}
-              exit={{ width: 0, opacity: 0 }}
-              transition={{ duration: 0.5, ease: "easeInOut" }}
-              className="border-r border-border bg-surface flex flex-col overflow-hidden relative shadow-2xl z-20 shrink-0"
+              key={`left-sidebar-${activeWorkspace}`}
+              initial={{ x: -400, opacity: 0 }}
+              animate={{ x: 0, opacity: 1 }}
+              exit={{ x: -400, opacity: 0 }}
+              transition={{ duration: 0.25, ease: "easeInOut" }}
+              className={cn(
+                "absolute left-6 top-6 transition-all duration-300 border border-white/5 bg-[#05070f]/75 backdrop-blur-md flex flex-col overflow-hidden rounded-md shadow-2xl z-25",
+                activeWorkspace === 'forensics' ? "bottom-[245px]" : "bottom-6",
+                activeWorkspace === 'ai' ? "w-[370px]" : "w-[340px]"
+              )}
             >
-               <div className="p-6 border-b border-border bg-panel/20">
-                  <div className="flex items-center justify-between mb-4">
-                     <h2 className="text-[10px] font-bold text-text-tertiary uppercase tracking-[0.2em]">Live Intelligence Metrics</h2>
-                     <span className="text-[9px] font-mono text-accent-cyan opacity-50">SYNC_OK</span>
-                  </div>
-                  <MetricsPanel metrics={simulationState.metrics} threatLevel={simulationState.threatLevel} />
-               </div>
-               
-               <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar p-6 space-y-10">
-                  <section>
-                     <ControlPanel 
-                        nodes={simulationState.nodes}
-                        onLaunchAttack={simulationActions.launchAttack}
-                        onLaunchScenario={simulationActions.launchScenario}
-                        onActivateDefense={simulationActions.activateDefense}
-                        onReset={simulationActions.resetSimulation}
-                        onToggleHeatmap={onToggleHeatmap}
-                        showHeatmap={showHeatmap}
-                        onShowReport={() => onSetShowReport(true)}
-                        selectedNodeId={selectedNode?.id}
-                        simulationSpeed={simulationState.simulationSpeed}
-                        onSetSimulationSpeed={simulationActions.setSimulationSpeed}
-                        activeDefenseModules={simulationState.activeDefenseModules}
-                        onToggleDefenseModule={simulationActions.toggleDefenseModule}
-                        onOpenManual={onOpenManual}
-                        onUpdateNodeVulnerability={simulationActions.updateNodeVulnerability}
-                        onUpdateZoneVulnerability={simulationActions.updateZoneVulnerability}
-                        onHighlightNode={setHighlightedNodeId}
-                        spreadVelocity={simulationState.spreadVelocity}
-                        onSetSpreadVelocity={simulationActions.setSpreadVelocity}
-                        isSimulating={simulationState.isSimulating}
-                        onToggleSimulation={simulationActions.toggleSimulation}
-                     />
-                  </section>
-                  
-                  <section className="pt-4 border-t border-border/50">
-                     <div className="flex items-center justify-between mb-6">
-                        <h3 className="text-[10px] font-bold text-text-tertiary uppercase tracking-[0.2em]">Operational Ledger</h3>
-                        <div className="flex gap-2">
-                           <div className="w-1 h-1 bg-accent-cyan rounded-full animate-pulse" />
-                           <div className="w-1 h-1 bg-accent-cyan rounded-full animate-pulse [animation-delay:0.2s]" />
-                        </div>
-                     </div>
-                     <EventPanel events={simulationState.events} />
-                  </section>
-               </div>
+              {activeWorkspace === 'operations' && (
+                <>
+                   <div className="p-5 border-b border-border bg-panel/10">
+                      <div className="flex items-center justify-between mb-3">
+                         <h2 className="text-[9px] font-bold text-text-tertiary uppercase tracking-[0.2em]">Operational Status</h2>
+                         <span className="text-[8px] font-mono text-state-safe">SYNC_OK</span>
+                      </div>
+                      <div className="text-[14px] font-mono font-bold text-white mb-2 uppercase tracking-wide">
+                        Live Telemetry Stream
+                      </div>
+                      <p className="text-[9.5px] text-text-secondary leading-relaxed mb-1">
+                        Real-time visual node matrix mapping live threat scenarios, latency metrics, and trust boundary segmentations.
+                      </p>
+                   </div>
+                   
+                   <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar p-5 space-y-6">
+                      <section>
+                         <div className="flex items-center justify-between mb-3">
+                            <h3 className="text-[8.5px] font-bold text-text-tertiary uppercase tracking-[0.2em]">Active Incidents</h3>
+                            <span className="w-1.5 h-1.5 rounded-full bg-state-danger animate-pulse" />
+                         </div>
+                         <div className="space-y-2 max-h-48 overflow-y-auto custom-scrollbar">
+                           {simulationState.incidents.filter(i => i.status !== 'resolved').slice(0, 4).map(inc => {
+                             const targetNode = simulationState.nodes.find(n => n.id === inc.affectedNodeIds[0]);
+                             const targetNodeLabel = targetNode ? targetNode.label : 'N/A';
+                             return (
+                               <div key={inc.id} className="p-2 border border-border bg-void/50 rounded-sm flex flex-col gap-1 hover:border-border-bright transition-all">
+                                 <div className="flex items-center justify-between">
+                                   <span className="text-[8.5px] font-mono text-state-danger-bright font-black">[{inc.severity.toUpperCase()}]</span>
+                                   <span className="text-[8px] font-mono text-text-tertiary">{new Date(inc.detectionTime).toLocaleTimeString()}</span>
+                                 </div>
+                                 <div className="text-[9px] text-white font-bold leading-none truncate uppercase">{inc.title}</div>
+                                 <div className="text-[8px] text-text-secondary truncate">{targetNodeLabel} • {inc.attackType}</div>
+                               </div>
+                             );
+                           })}
+                           {simulationState.incidents.filter(i => i.status !== 'resolved').length === 0 && (
+                             <div className="text-[9px] text-text-tertiary italic text-center py-4 border border-dashed border-border rounded">No active incidents detected. SYSTEM_SECURE.</div>
+                           )}
+                         </div>
+                      </section>
 
-               {/* Console Footer */}
-               <div className="h-10 px-6 border-t border-border bg-void/50 flex items-center justify-between">
-                  <div className="flex items-center gap-4">
-                     <span className="text-[8px] font-mono text-state-safe uppercase">CPU: 12%</span>
-                     <span className="text-[8px] font-mono text-text-tertiary uppercase">RAM: 4.2GB</span>
+                      <section className="pt-4 border-t border-border/50">
+                         <div className="flex items-center justify-between mb-4">
+                            <h3 className="text-[8.5px] font-bold text-text-tertiary uppercase tracking-[0.2em]">Ledger Stream</h3>
+                            <div className="flex gap-1">
+                               <div className="w-1 h-1 bg-accent-cyan rounded-full animate-pulse" />
+                               <div className="w-1 h-1 bg-accent-cyan rounded-full animate-pulse [animation-delay:0.2s]" />
+                            </div>
+                         </div>
+                         <EventPanel events={simulationState.events} />
+                      </section>
+                   </div>
+
+                   {/* Console Footer */}
+                   <div className="h-10 px-5 border-t border-border bg-void/50 flex items-center justify-between shrink-0">
+                      <div className="flex items-center gap-3">
+                         <span className="text-[8px] font-mono text-state-safe uppercase">CPU: 12%</span>
+                         <span className="text-[8px] font-mono text-text-tertiary uppercase">RAM: 4.2GB</span>
+                      </div>
+                      <div className="text-[8px] font-mono text-text-tertiary">0x7F...9A2C</div>
+                   </div>
+                </>
+              )}
+
+              {activeWorkspace === 'forensics' && (
+                <>
+                  <div className="p-5 border-b border-border bg-panel/20">
+                    <div className="flex items-center gap-2 mb-2">
+                      <Clock size={12} className="text-amber-500 animate-pulse mt-0.5" />
+                      <h2 className="text-[10px] font-bold text-text-tertiary uppercase tracking-[0.2em]">Forensic Timeline Logger</h2>
+                    </div>
+                    <p className="text-[9.5px] text-text-secondary leading-relaxed">
+                      Historical breach auditing, scenario replays, and incident note-taking. Select an attack sequence below to inspect.
+                    </p>
                   </div>
-                  <div className="text-[8px] font-mono text-text-tertiary">0x7F...9A2C</div>
-               </div>
+
+                  <div className="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-4">
+                    <div className="space-y-3">
+                      <div className="text-[9px] font-mono text-text-tertiary uppercase tracking-wider mb-2">SECURITY BREACH ARCHIVES</div>
+                      {simulationState.incidents.map((inc) => {
+                        const targetNodeId = inc.affectedNodeIds?.[0];
+                        const targetNode = simulationState.nodes.find(n => n.id === targetNodeId);
+                        const targetNodeLabel = targetNode ? targetNode.label : 'N/A';
+                        return (
+                          <div 
+                            key={inc.id}
+                            onClick={() => {
+                              if (targetNodeId && targetNode) {
+                                handleSelectNode(targetNode);
+                              }
+                            }}
+                            className={cn(
+                              "p-3 border rounded-sm flex flex-col gap-2 transition-all cursor-pointer",
+                              inc.severity === 'critical' ? 'border-red-500/30 bg-red-950/20' : 
+                              inc.severity === 'high' ? 'border-amber-500/30 bg-amber-950/20' : 'border-border bg-panel/10',
+                              selectedNode?.id === targetNodeId ? 'border-accent-cyan ring-1 ring-accent-cyan/10' : 'hover:border-border-bright'
+                            )}
+                          >
+                            <div className="flex items-center justify-between">
+                              <span className={cn(
+                                "text-[8.5px] font-mono uppercase font-black",
+                                inc.severity === 'critical' ? 'text-rose-400' : 'text-amber-400'
+                              )}>[{inc.severity.toUpperCase()}]</span>
+                              <span className="text-[8px] font-mono text-text-tertiary">{new Date(inc.detectionTime).toLocaleTimeString()}</span>
+                            </div>
+                            <div className="text-[10px] text-white font-bold uppercase tracking-tight">{inc.title}</div>
+                            <div className="text-[9.5px] text-text-secondary leading-tight bg-void/50 p-1.5 border border-white/5 font-mono overflow-x-hidden text-ellipsis whitespace-nowrap">
+                              TARGET: {targetNodeLabel} • STATUS: {inc.status}
+                            </div>
+                            
+                            {inc.analystNotes && inc.analystNotes.length > 0 && (
+                              <div className="border-t border-border/40 pt-1.5 mt-0.5">
+                                <div className="text-[7.5px] font-mono text-accent-cyan uppercase tracking-wider mb-1">Operator Notes ({inc.analystNotes.length})</div>
+                                <div className="text-[9px] text-text-secondary italic line-clamp-2">"{inc.analystNotes[inc.analystNotes.length - 1]}"</div>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                      {simulationState.incidents.length === 0 && (
+                        <div className="text-center py-8 text-[10px] font-mono text-text-tertiary">
+                          No security incidents registered yet.
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {activeWorkspace === 'defense' && (
+                <>
+                  <div className="p-5 border-b border-border bg-panel/20">
+                    <div className="flex items-center gap-2 mb-2">
+                      <ShieldCheck size={13} className="text-accent-cyan mt-0.5" />
+                      <h2 className="text-[10px] font-bold text-text-tertiary uppercase tracking-[0.2em]">Defense Orchestrator</h2>
+                    </div>
+                    <p className="text-[9.5px] text-text-secondary leading-relaxed">
+                      Review, approve, and deploy autonomous threat response protocols. Configure isolation barriers below.
+                    </p>
+                  </div>
+
+                  <div className="flex-1 overflow-y-auto custom-scrollbar p-5">
+                    <AutonomousDefensePanel 
+                      recommendations={simulationState.defenseRecommendations}
+                      onApplyAction={simulationActions.applyDefenseRecommendation}
+                      onDismissAction={simulationActions.dismissDefenseRecommendation}
+                    />
+                  </div>
+                </>
+              )}
+
+              {activeWorkspace === 'twin' && (
+                <>
+                  <div className="p-5 border-b border-border bg-panel/20">
+                    <div className="flex items-center gap-2 mb-2">
+                      <Zap size={12} className="text-amber-500 animate-pulse mt-0.5" />
+                      <h2 className="text-[10px] font-bold text-text-tertiary uppercase tracking-[0.2em]">Chaos Sandbox & Stress Dial</h2>
+                    </div>
+                    <p className="text-[9.5px] text-text-secondary leading-relaxed">
+                      Simulate hostile breaches, modify system vulnerabilities, or introduce zero-day workloads inside this twin container.
+                    </p>
+                  </div>
+
+                  <div className="flex-1 overflow-y-auto custom-scrollbar p-5">
+                    <ControlPanel 
+                      nodes={simulationState.nodes}
+                      onLaunchAttack={simulationActions.launchAttack}
+                      onLaunchScenario={simulationActions.launchScenario}
+                      onActivateDefense={simulationActions.activateDefense}
+                      onReset={simulationActions.resetSimulation}
+                      onToggleHeatmap={onToggleHeatmap}
+                      showHeatmap={showHeatmap}
+                      onShowReport={() => onSetShowReport(true)}
+                      selectedNodeId={selectedNode?.id}
+                      simulationSpeed={simulationState.simulationSpeed}
+                      onSetSimulationSpeed={simulationActions.setSimulationSpeed}
+                      activeDefenseModules={simulationState.activeDefenseModules}
+                      onToggleDefenseModule={simulationActions.toggleDefenseModule}
+                      onOpenManual={onOpenManual}
+                      onUpdateNodeVulnerability={simulationActions.updateNodeVulnerability}
+                      onUpdateZoneVulnerability={simulationActions.updateZoneVulnerability}
+                      onHighlightNode={setHighlightedNodeId}
+                      spreadVelocity={simulationState.spreadVelocity}
+                      onSetSpreadVelocity={simulationActions.setSpreadVelocity}
+                      isSimulating={simulationState.isSimulating}
+                      onToggleSimulation={simulationActions.toggleSimulation}
+                    />
+                  </div>
+                </>
+              )}
+
+              {activeWorkspace === 'ai' && (
+                <>
+                   <div className="p-5 border-b border-border bg-panel/20 shrink-0">
+                     <div className="flex items-center gap-2 mb-2">
+                       <BrainCircuit size={13} className="text-accent-cyan mt-0.5" />
+                       <h2 className="text-[10px] font-bold text-text-tertiary uppercase tracking-[0.2em]">LLM Diagnostic Agents</h2>
+                     </div>
+                     <p className="text-[9.5px] text-text-secondary leading-relaxed">
+                       Observe dynamic LLM consensus scores and individual reasoning loops computed globally by autonomous audit agents.
+                     </p>
+                   </div>
+                   <div className="flex-1 overflow-hidden p-5">
+                     <AIOperationsCenter state={simulationState} />
+                   </div>
+                </>
+              )}
             </motion.div>
           )}
         </AnimatePresence>
 
-        {/* Battlespace Visualization */}
-        <div className="flex-1 relative bg-void overflow-hidden flex font-sans">
-           <div className="flex-1 relative overflow-hidden flex flex-col">
-              <div className="absolute inset-0 cyber-grid opacity-20 pointer-events-none" />
-              
-              {/* Header Label inside Visualization */}
-              <div className="absolute top-8 left-8 z-10 flex flex-col gap-1.5 pointer-events-none">
-                 <div className="flex items-center gap-4">
-                    <div className="w-8 h-[1px] bg-accent-cyan/50" />
-                    <span className="text-[10px] font-bold tracking-[0.4em] text-text-secondary uppercase">Spatial_Topology_Alpha</span>
-                 </div>
-                 <div className="text-[8px] font-mono text-text-tertiary uppercase ml-12">Cluster ID: SENTINEL_MESH_01</div>
-              </div>
+        {/* Central Persistent Battlespace / Graph Core - THE ENVIRONMENT ITSELF */}
+        <div className="absolute inset-0 bg-void overflow-hidden flex flex-col font-sans z-0">
+           <div className="absolute inset-0 cyber-grid opacity-20 pointer-events-none" />
+           
+           {/* Horizontal Metrics Panel (Decluttered Centered HUD Positioning) */}
+           <div className="px-6 pt-4 pb-1 z-10 shrink-0 max-w-4xl w-full mx-auto relative">
+              <MetricsPanel metrics={simulationState.metrics} threatLevel={simulationState.threatLevel} />
+           </div>
 
-              {/* Bento Radar Minimap Grid */}
-              <div className="absolute top-20 left-8 z-10 p-3 bg-void/90 border border-border/80 backdrop-blur-md rounded-sm flex flex-col gap-2 min-w-[155px] pointer-events-auto shadow-xl">
-                <div className="flex items-center gap-1">
-                  <Compass size={11} className="text-accent-cyan opacity-80" />
-                  <span className="text-[8px] font-bold text-text-tertiary tracking-widest uppercase font-mono">RADAR SUMMARY</span>
-                </div>
-                <div className="space-y-1.5 pt-1">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-1.5">
-                      <div className="w-1.5 h-1.5 rounded-full bg-state-safe" />
-                      <span className="text-[8px] font-mono font-bold text-text-secondary uppercase">Healthy</span>
-                    </div>
-                    <span className="text-[8.5px] font-mono font-bold text-white">
-                      {simulationState.nodes.filter(n => n.status === 'safe').length}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-1.5">
-                      <div className="w-1.5 h-1.5 rounded-full bg-rose-500" />
-                      <span className="text-[8px] font-mono font-bold text-text-secondary uppercase">Breached</span>
-                    </div>
-                    <span className="text-[8.5px] font-mono font-bold text-rose-500">
-                       {simulationState.nodes.filter(n => n.status === 'compromised').length}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-1.5">
-                      <div className="w-1.5 h-1.5 rounded-full bg-amber-500" />
-                      <span className="text-[8px] font-mono font-bold text-text-secondary uppercase">Quarantine</span>
-                    </div>
-                    <span className="text-[8.5px] font-mono font-bold text-amber-500">
-                      {simulationState.nodes.filter(n => n.status === 'quarantined').length}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-1.5">
-                      <div className="w-1.5 h-1.5 rounded-full bg-rose-300" />
-                      <span className="text-[8px] font-mono font-bold text-text-secondary uppercase">Degraded</span>
-                    </div>
-                    <span className="text-[8.5px] font-mono font-bold text-rose-300">
-                      {simulationState.nodes.filter(n => n.status === 'degraded').length}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              {/* TACTICAL TELEMETRY LAYERS */}
-              <div className="absolute top-[185px] left-8 z-10 p-3 bg-void/90 border border-border/80 backdrop-blur-md rounded-sm flex flex-col gap-2 min-w-[155px] pointer-events-auto shadow-xl">
-                <div className="flex items-center gap-1">
-                  <span className="w-1 h-1 bg-accent-cyan rounded-full animate-ping" />
-                  <span className="text-[8px] font-bold text-text-tertiary tracking-widest uppercase font-mono">TACTICAL LAYERS</span>
-                </div>
-                <div className="space-y-1.5 pt-1">
-                  {/* Heatmap Layer */}
-                  <button 
-                    onClick={onToggleHeatmap}
-                    className={cn(
-                      "w-full flex items-center justify-between text-[8px] font-mono font-bold py-1 px-1.5 border rounded-sm transition-all",
-                      showHeatmap 
-                        ? "bg-state-danger/15 border-state-danger/60 text-state-danger shadow-[0_0_8px_rgba(239,68,68,0.2)]" 
-                        : "bg-void/50 border-white/5 text-text-secondary hover:border-white/15"
-                    )}
-                  >
-                    <span>RISK_HEATMAP</span>
-                    <span className="text-[7.5px] opacity-75">{showHeatmap ? "ON" : "OFF"}</span>
-                  </button>
-
-                  {/* Trust Segmentation Boundaries */}
-                  <button 
-                    onClick={() => setShowSegmentation(!showSegmentation)}
-                    className={cn(
-                      "w-full flex items-center justify-between text-[8px] font-mono font-bold py-1 px-1.5 border rounded-sm transition-all",
-                      showSegmentation 
-                        ? "bg-accent-cyan/15 border-accent-cyan/60 text-accent-cyan shadow-[0_0_8px_rgba(0,255,209,0.2)]" 
-                        : "bg-void/50 border-white/5 text-text-secondary hover:border-white/15"
-                    )}
-                  >
-                    <span>SEC_SEGMENT</span>
-                    <span className="text-[7.5px] opacity-75">{showSegmentation ? "ON" : "OFF"}</span>
-                  </button>
-
-                  {/* Communication Instability */}
-                  <button 
-                    onClick={() => setShowCommunicationInstability(!showCommunicationInstability)}
-                    className={cn(
-                      "w-full flex items-center justify-between text-[8px] font-mono font-bold py-1 px-1.5 border rounded-sm transition-all",
-                      showCommunicationInstability 
-                        ? "bg-state-warning/15 border-state-warning/60 text-state-warning shadow-[0_0_8px_rgba(245,158,11,0.2)]" 
-                        : "bg-void/50 border-white/5 text-text-secondary hover:border-white/15"
-                    )}
-                  >
-                    <span>LATENCY_JITTER</span>
-                    <span className="text-[7.5px] opacity-75">{showCommunicationInstability ? "ON" : "OFF"}</span>
-                  </button>
-                </div>
-              </div>
-
-              {/* The Core Visualization Diagram Component */}
-              <div className="flex-1 relative">
-                <NetworkGraph 
-                  nodes={filteredNodes}
-                  links={simulationState.links}
-                  onNodeClick={handleSelectNode}
-                  selectedNodeId={selectedNode?.id}
-                  showHeatmap={showHeatmap}
-                  showSegmentation={showSegmentation}
-                  showCommunicationInstability={showCommunicationInstability}
-                  highlightedNodeId={highlightedNodeId}
-                  highlightedPaths={criticalPaths}
-                  visualSettings={visualSettings}
-                />
-              </div>
-
-              {/* Dynamic Interactive Tactical Command Menu Dial (Shows on Node Select) */}
-              <AnimatePresence>
-                {selectedNode && (
-                  <motion.div
-                    initial={{ y: 80, opacity: 0 }}
-                    animate={{ y: 0, opacity: 1 }}
-                    exit={{ y: 80, opacity: 0 }}
-                    className="absolute bottom-6 left-1/2 -translate-x-1/2 z-30 bg-void/90 backdrop-blur-md border border-accent-cyan/40 p-3 rounded-md shadow-2xl flex items-center gap-4 pointer-events-auto max-w-[90%] md:max-w-2xl"
-                  >
-                    <div className="flex flex-col border-r border-border/60 pr-4 shrink-0">
-                      <span className="text-[7px] font-mono text-accent-cyan tracking-widest uppercase">TACTICAL OPERATIONS</span>
-                      <span className="text-[10px] font-bold text-white uppercase truncate max-w-[120px] font-sans">{selectedNode.label}</span>
-                    </div>
-
-                    <div className="flex items-center gap-1.5 flex-wrap">
-                      {[
-                        { action: 'quarantine_workload', label: 'Quarantine', icon: ShieldAlert, color: 'text-amber-500 border-amber-500/30 hover:bg-amber-500/10' },
-                        { action: 'terminate_process', label: 'Kill Process', icon: Terminal, color: 'text-rose-400 border-rose-400/30 hover:bg-rose-400/10' },
-                        { action: 'rotate_credentials', label: 'Rotate Secrets', icon: Key, color: 'text-sky-400 border-sky-400/30 hover:bg-sky-400/10' },
-                        { action: 'block_traffic', label: 'Drop Traffic', icon: WifiOff, color: 'text-red-400 border-red-400/30 hover:bg-red-400/10' },
-                        { action: 'isolate_node', label: 'Isolate Route', icon: Shield, color: 'text-slate-300 border-slate-500/30 hover:bg-slate-500/10' },
-                        { action: 'increase_monitoring', label: 'Escalate Logs', icon: ActivityIcon, color: 'text-emerald-400 border-emerald-400/30 hover:bg-emerald-400/10' },
-                      ].map((item) => (
-                        <button
-                          key={item.action}
-                          onClick={() => {
-                            if (simulationActions.orchestrateDefense) {
-                              simulationActions.orchestrateDefense(item.action, selectedNode.id);
-                            } else {
-                              simulationActions.isolateNode(selectedNode.id);
-                            }
-                          }}
-                          className={cn(
-                            "flex items-center gap-1.5 px-2.5 py-1 text-[8.5px] font-mono font-bold uppercase border rounded-sm transition-all",
-                            item.color
-                          )}
-                        >
-                          <item.icon size={11} />
-                          {item.label}
-                        </button>
-                      ))}
-                    </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-
-              {/* Visual Settings Overlay */}
-              <AnimatePresence>
-                {showVisualSettings && (
-                  <motion.div 
-                    initial={{ opacity: 0, x: 20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    exit={{ opacity: 0, x: 20 }}
-                    className="absolute top-20 right-8 z-30 w-64 pointer-events-auto"
-                  >
-                     <VisualControlPanel 
-                        settings={visualSettings} 
-                        onChange={setVisualSettings} 
-                     />
-                  </motion.div>
-                )}
-              </AnimatePresence>
-
-              {/* AI HUD Overlay - Refined for precision */}
-              <div className="absolute bottom-8 right-8 flex gap-8 items-end pointer-events-none">
-                 <div className="flex flex-col items-end gap-1.5 translate-y-[-2px]">
-                    <div className="flex items-center gap-2">
-                      <span className="w-1 h-3 bg-accent-cyan/15" />
-                      <span className="font-mono text-[8px] tracking-[0.2em] text-accent-cyan/60 uppercase">Telemetry_Flux: 2.1kb/s</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="w-1 h-3 bg-accent-blue/15" />
-                      <span className="font-mono text-[8px] tracking-[0.2em] text-accent-blue/60 uppercase">Heuristic_Load: 31%</span>
-                    </div>
-                 </div>
-                 
-                 <div className="w-px h-12 bg-border-bright/20" />
-                 
-                 <div className="flex flex-col items-end gap-1 text-right">
-                    <div className="text-[10px] font-bold text-white uppercase tracking-wider mb-1">Node_Health_Index</div>
-                    <div className="flex gap-1">
-                      {Array.from({ length: 12 }).map((_, i) => (
-                        <div key={i} className={cn(
-                          "w-1 h-3 rounded-full transition-all",
-                          i < 9 ? "bg-state-safe/30" : i < 11 ? "bg-state-warning/30" : "bg-state-danger/30 animate-pulse"
-                        )} />
-                      ))}
-                    </div>
-                 </div>
+           {/* Space label inside visualization */}
+           <div className={cn(
+              "absolute top-[125px] z-10 flex flex-col gap-1 transition-all duration-300 pointer-events-none",
+              isFullscreen ? "left-8" : "left-[370px]"
+           )}>
+              <div className="flex items-center gap-3">
+                 <div className="w-6 h-[1px] bg-accent-cyan/40" />
+                 <span className="text-[9px] font-bold tracking-[0.3em] text-text-secondary uppercase">
+                    {activeWorkspace === 'operations' && 'OPERATIONAL_TOPOLOGY'}
+                    {activeWorkspace === 'forensics' && 'TEMPORAL_FORENSICS_MAP'}
+                    {activeWorkspace === 'defense' && 'CONTAINMENT_VECTORS'}
+                    {activeWorkspace === 'twin' && 'CHAOS_SANDBOX_SIMULATION'}
+                    {activeWorkspace === 'ai' && 'COGNITIVE_HEURISTICS_MAP'}
+                 </span>
               </div>
            </div>
 
-           {/* Integrated Drawer / Side Panel with Progressive detail disclosure */}
-           <AnimatePresence>
-             {activeSidePanel && (
-              <motion.div 
-                key="side-panel"
-                initial={{ x: 450, opacity: 0 }}
-                animate={{ x: 0, opacity: 1 }}
-                exit={{ x: 450, opacity: 0 }}
-                className="w-[440px] border-l border-border bg-surface h-full z-10 relative shadow-2xl flex flex-col shrink-0"
+           {/* Bento Radar Minimap Grid */}
+           <div className={cn(
+              "absolute top-[175px] z-10 p-3 bg-[#05070f]/90 border border-white/5 backdrop-blur-md rounded-md flex flex-col gap-2 min-w-[155px] pointer-events-auto shadow-xl transition-all duration-300",
+              isFullscreen ? "left-8" : "left-[370px]"
+           )}>
+             <div className="flex items-center gap-1">
+               <Compass size={11} className="text-accent-cyan opacity-80" />
+               <span className="text-[8px] font-bold text-text-tertiary tracking-widest uppercase font-mono mt-0.5">RADAR SUMMARY</span>
+             </div>
+             <div className="space-y-1.5 pt-1">
+               <div className="flex items-center justify-between">
+                 <div className="flex items-center gap-1.5">
+                   <div className="w-1.5 h-1.5 rounded-full bg-state-safe" />
+                   <span className="text-[8px] font-mono font-bold text-text-secondary uppercase">Healthy</span>
+                 </div>
+                 <span className="text-[8.5px] font-mono font-bold text-white">
+                   {simulationState.nodes.filter(n => n.status === 'safe').length}
+                 </span>
+               </div>
+               <div className="flex items-center justify-between">
+                 <div className="flex items-center gap-1.5">
+                   <div className="w-1.5 h-1.5 rounded-full bg-rose-500" />
+                   <span className="text-[8px] font-mono font-bold text-text-secondary uppercase">Breached</span>
+                 </div>
+                 <span className="text-[8.5px] font-mono font-bold text-rose-500">
+                    {simulationState.nodes.filter(n => n.status === 'compromised').length}
+                 </span>
+               </div>
+               <div className="flex items-center justify-between">
+                 <div className="flex items-center gap-1.5">
+                   <div className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                   <span className="text-[8px] font-mono font-bold text-text-secondary uppercase">Quarantine</span>
+                 </div>
+                 <span className="text-[8.5px] font-mono font-bold text-amber-500">
+                   {simulationState.nodes.filter(n => n.status === 'quarantined').length}
+                 </span>
+               </div>
+               <div className="flex items-center justify-between">
+                 <div className="flex items-center gap-1.5">
+                   <div className="w-1.5 h-1.5 rounded-full bg-rose-300" />
+                   <span className="text-[8px] font-mono font-bold text-text-secondary uppercase">Degraded</span>
+                 </div>
+                 <span className="text-[8.5px] font-mono font-bold text-rose-300">
+                   {simulationState.nodes.filter(n => n.status === 'degraded').length}
+                 </span>
+               </div>
+             </div>
+           </div>
+
+           {/* TACTICAL TELEMETRY LAYERS */}
+           <div className={cn(
+              "absolute top-[315px] z-10 p-3 bg-[#05070f]/90 border border-white/5 backdrop-blur-md rounded-md flex flex-col gap-2 min-w-[155px] pointer-events-auto shadow-xl transition-all duration-300",
+              isFullscreen ? "left-8" : "left-[370px]"
+           )}>
+             <div className="flex items-center gap-1">
+               <span className="w-1 h-1 bg-accent-cyan rounded-full animate-ping" />
+               <span className="text-[8px] font-bold text-text-tertiary tracking-widest uppercase font-mono">TACTICAL LAYERS</span>
+             </div>
+             <div className="space-y-1.5 pt-1">
+               <button 
+                 onClick={onToggleHeatmap}
+                 className={cn(
+                   "w-full flex items-center justify-between text-[8px] font-mono font-bold py-1 px-1.5 border rounded-sm transition-all",
+                   (activeWorkspace === 'defense' || showHeatmap)
+                     ? "bg-state-danger/15 border-state-danger/60 text-state-danger shadow-[0_0_8px_rgba(239,68,68,0.2)]" 
+                     : "bg-void/50 border-white/5 text-text-secondary hover:border-white/15"
+                 )}
+               >
+                 <span>RISK_HEATMAP</span>
+                 <span className="text-[7.5px] opacity-75">{(activeWorkspace === 'defense' || showHeatmap) ? "ON" : "OFF"}</span>
+               </button>
+
+               <button 
+                 onClick={() => setShowSegmentation(!showSegmentation)}
+                 className={cn(
+                   "w-full flex items-center justify-between text-[8px] font-mono font-bold py-1 px-1.5 border rounded-sm transition-all",
+                   (activeWorkspace === 'defense' || showSegmentation)
+                     ? "bg-accent-cyan/15 border-accent-cyan/60 text-accent-cyan shadow-[0_0_8px_rgba(0,255,209,0.2)]" 
+                     : "bg-void/50 border-white/5 text-text-secondary hover:border-white/15"
+               )}
+             >
+               <span>SEC_SEGMENT</span>
+               <span className="text-[7.5px] opacity-75">{(activeWorkspace === 'defense' || showSegmentation) ? "ON" : "OFF"}</span>
+             </button>
+
+             <button 
+               onClick={() => setShowCommunicationInstability(!showCommunicationInstability)}
+               className={cn(
+                 "w-full flex items-center justify-between text-[8px] font-mono font-bold py-1 px-1.5 border rounded-sm transition-all",
+                 (activeWorkspace === 'forensics' || showCommunicationInstability)
+                   ? "bg-state-warning/15 border-state-warning/60 text-state-warning shadow-[0_0_8px_rgba(245,158,11,0.2)]" 
+                   : "bg-void/50 border-white/5 text-text-secondary hover:border-white/15"
+               )}
+             >
+               <span>LATENCY_JITTER</span>
+               <span className="text-[7.5px] opacity-75">{(activeWorkspace === 'forensics' || showCommunicationInstability) ? "ON" : "OFF"}</span>
+             </button>
+           </div>
+         </div>
+
+         {/* Core Map Graphic Container */}
+         <div className="flex-1 min-h-0 relative">
+           <NetworkGraph 
+             nodes={filteredNodes}
+             links={simulationState.links}
+             onNodeClick={handleSelectNode}
+             selectedNodeId={selectedNode?.id}
+             showHeatmap={activeWorkspace === 'defense' ? true : showHeatmap}
+             showSegmentation={activeWorkspace === 'defense' ? true : showSegmentation}
+             showCommunicationInstability={activeWorkspace === 'forensics' ? true : showCommunicationInstability}
+             highlightedNodeId={highlightedNodeId}
+             highlightedPaths={criticalPaths}
+             visualSettings={visualSettings}
+             isReplay={activeWorkspace === 'forensics' ? true : isHistoricalMode}
+           />
+         </div>
+
+         {/* Dynamic Interactive Tactical Command Menu Dial (Shows on Node Select) */}
+         <AnimatePresence>
+           {selectedNode && (
+             <motion.div
+               initial={{ y: 80, opacity: 0 }}
+               animate={{ y: 0, opacity: 1 }}
+               exit={{ y: 80, opacity: 0 }}
+               className="absolute bottom-6 left-1/2 -translate-x-1/2 z-30 bg-void/95 backdrop-blur-md border border-accent-cyan/40 p-3 rounded-md shadow-2xl flex items-center gap-4 pointer-events-auto max-w-[95%] md:max-w-2xl"
+             >
+               <div className="flex flex-col border-r border-border/60 pr-4 shrink-0">
+                 <span className="text-[7px] font-mono text-accent-cyan tracking-widest uppercase font-mono">TACTICAL OPERATIONS</span>
+                 <span className="text-[10px] font-bold text-white uppercase truncate max-w-[120px] font-sans">{selectedNode.label}</span>
+               </div>
+
+               <div className="flex items-center gap-1.5 flex-wrap">
+                 {[
+                   { action: 'quarantine_workload', label: 'Quarantine', icon: ShieldAlert, color: 'text-amber-500 border-amber-500/30 hover:bg-amber-500/10' },
+                   { action: 'terminate_process', label: 'Kill Process', icon: Terminal, color: 'text-rose-400 border-rose-400/30 hover:bg-rose-400/10' },
+                   { action: 'rotate_credentials', label: 'Rotate Secrets', icon: Key, color: 'text-sky-400 border-sky-400/30 hover:bg-sky-400/10' },
+                   { action: 'block_traffic', label: 'Drop Traffic', icon: WifiOff, color: 'text-red-400 border-red-400/30 hover:bg-red-400/10' },
+                   { action: 'isolate_node', label: 'Isolate Route', icon: Shield, color: 'text-slate-300 border-slate-500/30 hover:bg-slate-500/10' },
+                   { action: 'increase_monitoring', label: 'Escalate Logs', icon: ActivityIcon, color: 'text-emerald-400 border-emerald-400/30 hover:bg-emerald-400/10' },
+                 ].map((item) => (
+                   <button
+                     key={item.action}
+                     disabled={activeWorkspace === 'forensics'}
+                     onClick={() => {
+                       if (activeWorkspace === 'forensics') return;
+                       if (simulationActions.orchestrateDefense) {
+                         simulationActions.orchestrateDefense(item.action, selectedNode.id);
+                       } else {
+                         simulationActions.isolateNode(selectedNode.id);
+                       }
+                     }}
+                     className={cn(
+                       "flex items-center gap-1.5 px-2.5 py-1 text-[8.5px] font-mono font-bold uppercase border rounded-sm transition-all",
+                       activeWorkspace === 'forensics' 
+                         ? "opacity-40 cursor-not-allowed border-white/5 bg-void/30 text-text-tertiary" 
+                         : item.color
+                     )}
+                     title={activeWorkspace === 'forensics' ? "Actions disabled in Replay Mode" : `Execute ${item.label}`}
+                   >
+                     <item.icon size={11} />
+                     {item.label}
+                   </button>
+                 ))}
+               </div>
+             </motion.div>
+           )}
+         </AnimatePresence>
+
+         {/* Visual Settings Overlay */}
+         <AnimatePresence>
+           {showVisualSettings && (
+             <motion.div 
+               initial={{ opacity: 0, x: 20 }}
+               animate={{ opacity: 1, x: 0 }}
+               exit={{ opacity: 0, x: 20 }}
+               className="absolute top-[125px] right-8 z-30 w-64 pointer-events-auto"
+             >
+                <VisualControlPanel 
+                   settings={visualSettings} 
+                   onChange={setVisualSettings} 
+                />
+             </motion.div>
+           )}
+         </AnimatePresence>
+
+         {/* Context-Aware Overlay Cards for Different Workspaces */}
+         <AnimatePresence>
+           {activeWorkspace === 'forensics' && (
+             <motion.div 
+               initial={{ opacity: 0, y: 30 }}
+               animate={{ opacity: 1, y: 0 }}
+               exit={{ opacity: 0, y: 30 }}
+               className="absolute top-6 right-6 z-10 bg-rose-950/45 border border-rose-500/40 p-4 rounded-sm backdrop-blur shadow-2xl flex flex-col gap-1 max-w-[340px]"
+             >
+               <div className="flex items-center gap-2">
+                 <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse" />
+                 <span className="text-[10px] font-black text-rose-300 tracking-widest uppercase">TEMPORAL PLAYBACK ACTIVE</span>
+               </div>
+               <p className="text-[9px] text-text-secondary leading-normal">
+                 System is locked in forensic workload reconstruction mode. Telemetry changes represent historic logs rather than real-time drift.
+               </p>
+             </motion.div>
+           )}
+
+           {activeWorkspace === 'defense' && (
+             <motion.div 
+               initial={{ opacity: 0, y: 30 }}
+               animate={{ opacity: 1, y: 0 }}
+               exit={{ opacity: 0, y: 30 }}
+               className="absolute top-6 right-6 z-10 bg-void/80 border border-accent-cyan/35 p-4 rounded backdrop-blur max-w-[340px] shadow-2xl"
+             >
+               <div className="text-[7.5px] font-mono text-accent-cyan tracking-widest uppercase mb-1">Defense Containment Summary</div>
+               <div className="text-[11px] font-bold text-white uppercase tracking-tight mb-2">CONTAINMENT FIELD LAYER</div>
+               <p className="text-[9px] text-text-secondary leading-normal mb-3">
+                 Mitigated zones are surrounded by glowing isolation fields. Watch live threat containment vectors mapping to network endpoints.
+               </p>
+               
+               <div className="grid grid-cols-2 gap-2 border-t border-border pt-3">
+                 <div>
+                   <div className="text-[8px] font-mono text-text-tertiary uppercase">PENDING_RECS</div>
+                   <div className="text-xs font-mono font-bold text-amber-500">
+                     {simulationState.defenseRecommendations.filter(r => r.status === 'pending').length} Actions
+                   </div>
+                 </div>
+                 <div>
+                   <div className="text-[8px] font-mono text-text-tertiary uppercase">APPLIED_SHIELDS</div>
+                   <div className="text-xs font-mono font-bold text-accent-cyan">
+                     {simulationState.defenseRecommendations.filter(r => r.status === 'applied').length} Active
+                   </div>
+                 </div>
+               </div>
+             </motion.div>
+           )}
+         </AnimatePresence>
+
+         {/* Forensic Timeline Controls (ONLY when forensic mode is selected!) */}
+         <AnimatePresence>
+           {activeWorkspace === 'forensics' && (
+             <AttackTimeline />
+           )}
+         </AnimatePresence>
+
+         {/* AI HUD Overlay */}
+         <div className="absolute bottom-8 right-8 flex gap-8 items-end pointer-events-none">
+            <div className="flex flex-col items-end gap-1.5 translate-y-[-2px]">
+              <div className="flex items-center gap-2">
+                <span className="w-1 h-3 bg-accent-cyan/15" />
+                <span className="font-mono text-[8px] tracking-[0.2em] text-accent-cyan/60 uppercase">Telemetry_Flux: 2.1kb/s</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="w-1 h-3 bg-accent-blue/15" />
+                <span className="font-mono text-[8px] tracking-[0.2em] text-accent-blue/60 uppercase">Heuristic_Load: 31%</span>
+              </div>
+            </div>
+            
+            <div className="w-px h-12 bg-border-bright/20" />
+            
+            <div className="flex flex-col items-end gap-1 text-right">
+               <div className="text-[10px] font-bold text-white uppercase tracking-wider mb-1">Node_Health_Index</div>
+               <div className="flex gap-1">
+                 {Array.from({ length: 12 }).map((_, i) => (
+                   <div key={i} className={cn(
+                     "w-1 h-3 rounded-full transition-all",
+                     i < 9 ? "bg-state-safe/30" : i < 11 ? "bg-state-warning/30" : "bg-state-danger/30 animate-pulse"
+                   )} />
+                 ))}
+               </div>
+            </div>
+         </div>
+      </div>
+
+      {/* Right Overlay Panels Column */}
+      <AnimatePresence mode="wait">
+        {/* If selectedNode is active, show the details drawer regardless, as it is the supreme tactical inspector */}
+        {selectedNode ? (
+          <motion.div
+            key="node-inspector-drawer"
+            initial={{ x: 455, opacity: 0 }}
+            animate={{ x: 0, opacity: 1 }}
+            exit={{ x: 455, opacity: 0 }}
+            transition={{ duration: 0.25 }}
+            className={cn(
+              "absolute right-6 top-6 transition-all duration-300 border border-white/5 bg-[#05070f]/75 backdrop-blur-md z-25 shadow-2xl flex flex-col overflow-hidden rounded-md",
+              activeWorkspace === 'forensics' ? "bottom-[245px]" : "bottom-6",
+              "w-[390px]"
+            )}
+          >
+            <div className="p-4 border-b border-border flex items-center justify-between bg-panel/30">
+              <div className="flex items-center gap-2">
+                <ActivityIcon size={12} className="text-accent-cyan animate-pulse mt-0.5" />
+                <span className="text-[10px] font-black uppercase tracking-wider text-white">TACTICAL INSPECTOR</span>
+              </div>
+              <button 
+                onClick={() => handleSelectNode(null)} 
+                className="text-[9px] font-mono text-text-tertiary hover:text-white px-2 py-0.5 border border-border hover:border-border-bright rounded transition-colors"
               >
-                {/* Panel Selector Tabs - Enterprise Style */}
-                 <div className="flex bg-void/50 p-1 m-6 rounded-sm border border-border pb-1 shrink-0">
-                   {[
-                     { id: 'twin', label: 'Twin_Range' },
-                     { id: 'details', label: 'Telemetry', alert: selectedNode?.status === 'compromised' },
-                     { id: 'ai', label: 'AI_Intel', alert: selectedNode?.status === 'compromised' },
-                     { id: 'ops', label: 'AI_Ops' },
-                     { id: 'identity', label: 'Identity' },
-                     { id: 'intelligence', label: 'Intel' },
-                     { id: 'analytics', label: 'Analytics' },
-                     { id: 'defense', label: 'Defense', alert: simulationState.defenseRecommendations.filter(r => r.status === 'pending').length > 0 }
-                   ].map((tab) => (
-                     <button 
-                       key={tab.id}
-                       onClick={() => setActiveSidePanel(tab.id as any)}
-                       className={cn(
-                         "flex-1 py-1.5 text-[8px] font-bold tracking-[1px] uppercase transition-all relative",
-                         activeSidePanel === tab.id 
-                           ? "bg-accent-cyan/10 text-accent-cyan shadow-[0_0_15px_rgba(0,242,255,0.1)] border-b border-accent-cyan" 
-                           : "text-text-tertiary hover:text-text-primary"
-                       )}
-                     >
-                       {tab.label}
-                       {tab.alert && activeSidePanel !== tab.id && (
-                         <span className="absolute top-1 right-1.5 w-1 h-1 bg-accent-cyan rounded-full animate-pulse shadow-[0_0_8px_rgba(0,242,255,0.8)]" />
-                       )}
-                     </button>
-                   ))}
+                COLLAPSE
+              </button>
+            </div>
+            
+            <div className="flex bg-void/50 p-1 m-4 rounded-sm border border-border pb-1 shrink-0">
+              {[
+                { id: 'details', label: 'Telemetry' },
+                { id: 'ai', label: 'AI_Insight' },
+                { id: 'analytics', label: 'Analytics' }
+              ].map((tab) => (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveNodeTab(tab.id as any)}
+                  className={cn(
+                    "flex-1 py-1 text-[8.5px] font-mono font-bold tracking-[1px] uppercase transition-all relative",
+                    activeNodeTab === tab.id
+                      ? "bg-accent-cyan/10 text-accent-cyan border-b border-accent-cyan"
+                      : "text-text-tertiary hover:text-text-primary"
+                  )}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+
+            <div className="flex-1 min-h-0 overflow-hidden">
+              {activeNodeTab === 'details' && (
+                <NodeDetails 
+                  node={selectedNode} 
+                  nodes={simulationState.nodes}
+                  events={simulationState.events}
+                  links={simulationState.links}
+                  onIsolate={simulationActions.isolateNode}
+                  onClose={() => handleSelectNode(null)} 
+                  onViewAI={() => setActiveNodeTab('ai')}
+                  isPanel={true}
+                />
+              )}
+              {activeNodeTab === 'ai' && (
+                <div className="h-full p-4 overflow-y-auto">
+                  <AIIntelligencePanel 
+                    selectedNode={selectedNode}
+                    allNodes={simulationState.nodes}
+                    allLinks={simulationState.links}
+                    knowledgeBase={simulationState.knowledgeBase}
+                    defenseRecommendations={simulationState.defenseRecommendations}
+                  />
+                </div>
+              )}
+              {activeNodeTab === 'analytics' && (
+                <div className="h-full p-4 overflow-y-auto">
+                  <AnalyticsPanel 
+                    nodes={simulationState.nodes}
+                    links={simulationState.links}
+                  />
+                </div>
+              )}
+            </div>
+          </motion.div>
+        ) : (
+          /* Workspace specific right sidebars when no node is selected */
+          <>
+            {activeWorkspace === 'twin' && (
+              <motion.div 
+                key="workspace-right-twin"
+                initial={{ x: 455, opacity: 0 }}
+                animate={{ x: 0, opacity: 1 }}
+                exit={{ x: 455, opacity: 0 }}
+                transition={{ duration: 0.25 }}
+                className={cn(
+                  "absolute right-6 top-6 transition-all duration-300 border border-white/5 bg-[#05070f]/75 backdrop-blur-md z-25 shadow-2xl flex flex-col overflow-hidden rounded-md",
+                  "bottom-6",
+                  "w-[390px]"
+                )}
+              >
+                <div className="p-6 border-b border-border bg-panel/30">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[9px] font-bold text-text-tertiary uppercase tracking-wider font-mono">SIMULATION RESILIENCE CORES</span>
+                    <span className="text-[8px] font-mono text-state-warning flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-state-warning animate-pulse" />
+                      SIMULATION_CONTAINER: DEPLOYED
+                    </span>
+                  </div>
+                  <h3 className="text-xs font-bold font-sans text-white uppercase tracking-tight">INFRASTRUCTURE TWIN RESILIENCE MONITOR</h3>
                 </div>
 
-                <div className="flex-1 min-h-0">
-                   <AnimatePresence mode="wait">
-                     {renderSidePanelContent()}
-                   </AnimatePresence>
+                <div className="flex-1 overflow-y-auto custom-scrollbar p-6">
+                  <DigitalTwinDashboard onHighlightNode={setHighlightedNodeId} />
                 </div>
               </motion.div>
-             )}
-           </AnimatePresence>
-        </div>
-      </div>
+            )}
+
+            {activeWorkspace === 'ai' && (
+              <motion.div 
+                key="workspace-right-ai"
+                initial={{ x: 455, opacity: 0 }}
+                animate={{ x: 0, opacity: 1 }}
+                exit={{ x: 455, opacity: 0 }}
+                transition={{ duration: 0.25 }}
+                className={cn(
+                  "absolute right-6 top-6 transition-all duration-300 border border-white/5 bg-[#05070f]/75 backdrop-blur-md z-25 shadow-2xl flex flex-col overflow-hidden rounded-md",
+                  "bottom-6",
+                  "w-[390px]"
+                )}
+              >
+                <div className="p-5 border-b border-border bg-panel/10 shrink-0">
+                  <div className="text-[7.5px] font-mono text-text-tertiary tracking-widest uppercase mb-1">Knowledge Synthesis Ledger</div>
+                  <h1 className="text-xs font-bold text-white uppercase">SYNTHESIZED INTEL HEURISTICS HUB</h1>
+                </div>
+                <div className="flex-1 overflow-y-auto custom-scrollbar p-5">
+                  <IntelligenceHub state={simulationState} />
+                </div>
+              </motion.div>
+            )}
+          </>
+        )}
+      </AnimatePresence>
+    </div>
     </motion.div>
     
     <AnimatePresence>
