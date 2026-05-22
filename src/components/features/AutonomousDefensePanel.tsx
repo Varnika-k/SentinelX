@@ -77,47 +77,95 @@ export function AutonomousDefensePanel({ recommendations, onApplyAction, onDismi
                   exit={{ opacity: 0, x: 20 }}
                   key={rec.id}
                   className={cn(
-                    "p-3 border rounded space-y-3 relative group overflow-hidden",
+                    "p-3.5 border rounded-md space-y-3 relative group overflow-hidden backdrop-blur-md transition-all duration-300",
                     getPriorityColor(rec.priority)
                   )}
                 >
-                  <div className="flex justify-between items-start">
-                    <div className="flex flex-col">
-                      <span className="text-[10px] font-black font-heading tracking-tight uppercase break-all">
+                  {/* Card Header */}
+                  <div className="flex justify-between items-start gap-2">
+                    <div className="flex flex-col gap-0.5">
+                      <div className="flex items-center gap-2">
+                        <span className="px-1.5 py-0.5 rounded-sm bg-accent-cyan/10 border border-accent-cyan/35 text-[7px] font-mono font-bold uppercase tracking-wider text-accent-cyan">
+                          {rec.title || 'ACTIVE_MITIGATION'}
+                        </span>
+                        {rec.urgency && (
+                          <span className={cn(
+                            "px-1 py-0.5 rounded-sm text-[7px] font-mono font-bold uppercase tracking-wider",
+                            rec.urgency === 'Critical' ? "bg-state-danger/20 border border-state-danger/30 text-state-danger" :
+                            rec.urgency === 'Urgent' ? "bg-state-warning/20 border border-state-warning/30 text-state-warning" :
+                            "bg-white/5 border border-white/10 text-white/50"
+                          )}>
+                            {rec.urgency}
+                          </span>
+                        )}
+                      </div>
+                      <span className="text-[10px] font-black font-heading text-white tracking-wide mt-1 uppercase">
                         {rec.action.replace('_', ' ')}
                       </span>
-                      <span className="text-[8px] font-mono opacity-60">Target: {rec.targetId}</span>
                     </div>
-                    <div className="text-[9px] font-mono font-bold">
-                      {(rec.confidence * 100).toFixed(0)}%_CONF
+                    <div className="text-right">
+                      <div className="text-[9px] font-mono font-bold text-accent-cyan text-glow">
+                        {((rec.mitigationProbability || rec.confidence) * 100).toFixed(0)}%_SUCCESS
+                      </div>
+                      <span className="text-[7.5px] font-mono opacity-50 block">Target: {rec.targetId}</span>
                     </div>
                   </div>
 
-                  <p className="text-[9px] font-mono text-white/70 leading-relaxed italic">
-                    "{rec.reasoning}"
-                  </p>
+                  {/* Core Description & Rationale */}
+                  <div className="space-y-1.5 bg-void/35 p-2 rounded border border-white/5">
+                    <p className="text-[9px] font-mono text-white/80 leading-relaxed italic">
+                      "{rec.reasoning}"
+                    </p>
+                    {rec.rationale && (
+                      <div className="text-[8px] font-mono text-text-secondary border-t border-white/5 pt-1.5 mt-1.5">
+                        <span className="text-[7px] text-accent-cyan uppercase font-black tracking-widest block mb-0.5">Operational Rationale</span>
+                        {rec.rationale}
+                      </div>
+                    )}
+                  </div>
 
-                  <div className="flex gap-2">
+                  {/* Operational Impact Grid */}
+                  <div className="grid grid-cols-2 gap-2 text-[8px] font-mono pt-1">
+                    <div className="p-1.5 bg-void/50 rounded border border-white/5 flex flex-col gap-0.5">
+                      <span className="opacity-40 uppercase font-black text-[6.5px]">Impact Assessment</span>
+                      <span className="text-white font-medium truncate">{rec.predictedImpact || `${Math.round(rec.impactScore * 100)}% Risk Reduction`}</span>
+                    </div>
+                    <div className="p-1.5 bg-void/50 rounded border border-white/5 flex flex-col gap-0.5">
+                      <span className="opacity-40 uppercase font-black text-[6.5px]">Overhead Cost</span>
+                      <span className={cn(
+                        "font-bold uppercase",
+                        rec.operationalCost === 'High' ? "text-state-danger" :
+                        rec.operationalCost === 'Medium' ? "text-state-warning" : "text-emerald-400"
+                      )}>{rec.operationalCost || 'Low'}</span>
+                    </div>
+                    <div className="col-span-2 p-1.5 bg-void/50 rounded border border-white/5 flex flex-col gap-0.5">
+                      <span className="opacity-40 uppercase font-black text-[6.5px]">Affected Infrastructure Scope</span>
+                      <span className="text-accent-cyan font-bold uppercase truncate">{rec.affectedInfrastructure || 'Direct Node interfaces & Subnet access'}</span>
+                    </div>
+                  </div>
+
+                  {/* Trigger buttons */}
+                  <div className="flex gap-2 pt-1">
                     <button 
                       onClick={() => onApplyAction(rec)}
-                      className="flex-1 py-1.5 bg-accent-cyan/10 border border-accent-cyan/30 rounded text-[8px] font-heading font-bold uppercase transition-all hover:bg-accent-cyan hover:text-void"
+                      className="flex-1 py-1.5 bg-accent-cyan/15 hover:bg-accent-cyan border border-accent-cyan/35 text-accent-cyan hover:text-void rounded text-[8.5px] font-heading font-black tracking-widest uppercase transition-all duration-300 transform hover:scale-[1.01]"
                     >
-                      Authorize_Action
+                      EXECUTE_COUNTERMEASURE
                     </button>
                     <button 
                       onClick={() => onDismissAction(rec.id)}
-                      className="px-3 py-1.5 bg-void border border-border-primary/20 rounded text-[8px] font-heading font-bold uppercase hover:bg-background-light/10"
+                      className="px-3 py-1.5 bg-void border border-border-primary/20 rounded text-[8px] font-heading font-black tracking-widest uppercase hover:bg-white/5 transition-all"
                     >
-                      Dismiss
+                      DISMISS
                     </button>
                   </div>
 
                   {/* Visual indication of risk reduction */}
-                  <div className="absolute top-0 right-0 h-1 bg-accent-cyan/20 w-full overflow-hidden">
+                  <div className="absolute top-0 right-0 h-1 bg-accent-cyan/15 w-full overflow-hidden">
                     <motion.div 
                       initial={{ width: 0 }}
                       animate={{ width: `${rec.impactScore * 100}%` }}
-                      className="h-full bg-accent-cyan"
+                      className="h-full bg-accent-cyan shadow-[0_0_8px_#00f2ff]"
                     />
                   </div>
                 </motion.div>

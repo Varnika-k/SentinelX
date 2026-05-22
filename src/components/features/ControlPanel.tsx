@@ -500,6 +500,84 @@ export function ControlPanel({
               ))}
            </div>
         </section>
+
+        {/* Section 6: Telemetry Ingest Pipeline Feeders */}
+        <section className="space-y-4 pt-4 border-t border-border/50">
+           <div className="flex items-center justify-between">
+              <span className="text-[9px] text-text-tertiary font-bold uppercase tracking-[0.2em]">06. Telemetry_Ingress_Feeds</span>
+              <span className="text-[8px] font-mono text-accent-cyan/60 uppercase">Pipeline_Direct</span>
+           </div>
+           
+           <div className="grid grid-cols-2 gap-2">
+              <button
+                onClick={async () => {
+                  try {
+                    const target = targetNodeId || 'pc-admin-hq';
+                    const response = await fetch('/api/v1/telemetry/wazuh', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                        timestamp: new Date().toISOString(),
+                        rule: { id: "100201", level: 10, description: "Wazuh SIEM alert: privilege escalation suspicious code run in powershell.exe" },
+                        agent: { name: target },
+                        data: { srcip: "185.220.101.5", user: "administrator", process: "powershell" }
+                      })
+                    });
+                    if (response.ok) {
+                      triggerActionFeedback('wazuh-trigger');
+                    }
+                  } catch (err) {
+                    console.error('Wazuh ingest trigger error', err);
+                  }
+                }}
+                className={cn(
+                  "precision-button h-16 flex flex-col items-center justify-center gap-1.5 text-center p-2 hover:bg-accent-cyan/10 transition-all text-text-secondary",
+                  activeActions['wazuh-trigger'] && "bg-accent-cyan text-void"
+                )}
+              >
+                <Shield size={14} className="text-accent-cyan" />
+                <div className="flex flex-col">
+                  <span className="text-[9px] font-inter font-bold tracking-tight">INGEST_WAZUH</span>
+                  <span className="text-[7px] opacity-60 font-mono text-accent-cyan lowercase">Endpoint SIEM</span>
+                </div>
+              </button>
+
+              <button
+                onClick={async () => {
+                  try {
+                    const target = targetNodeId || 'k8s-pod-auth-api-559b';
+                    const response = await fetch('/api/v1/telemetry/falco', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                        time: new Date().toISOString(),
+                        rule: "Falco Container Guard Hook: Interactive Shell Run",
+                        priority: "Critical",
+                        output: `Interactive bash shell opened in pod ${target} in production namespace by user root`,
+                        container: "auth-api-container",
+                        k8s: { pod: target, ns: "production" }
+                      })
+                    });
+                    if (response.ok) {
+                      triggerActionFeedback('falco-trigger');
+                    }
+                  } catch (err) {
+                    console.error('Falco ingest trigger error', err);
+                  }
+                }}
+                className={cn(
+                  "precision-button h-16 flex flex-col items-center justify-center gap-1.5 text-center p-2 hover:bg-state-warning/10 transition-all text-text-secondary",
+                  activeActions['falco-trigger'] && "bg-state-warning text-void"
+                )}
+              >
+                <Bug size={14} className="text-state-warning" />
+                <div className="flex flex-col">
+                  <span className="text-[9px] font-inter font-bold tracking-tight">INGEST_FALCO</span>
+                  <span className="text-[7px] opacity-60 font-mono text-state-warning lowercase">Runtime eBPF</span>
+                </div>
+              </button>
+           </div>
+        </section>
       </div>
 
       {/* Footer Diagnostic Panel */}

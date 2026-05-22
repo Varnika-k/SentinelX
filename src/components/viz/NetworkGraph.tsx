@@ -72,11 +72,20 @@ export function NetworkGraph({
   const handleMouseEnter = useCallback((node: D3Node) => setHoveredNode(node), []);
   const handleMouseLeave = useCallback(() => setHoveredNode(null), []);
 
-  // Initialize simulation data once and maintain it
+  // Master reactive synchronization effect that handles initial mounting, node filtering, status updates, dimming, and replay transitions perfectly.
   useEffect(() => {
     const validNodes = nodes.filter(n => n && n.id);
-    const d3Nodes: D3Node[] = validNodes.map(n => ({ ...n }));
+    const currentSimNodes = simulationRef.current ? simulationRef.current.nodes() : [];
     
+    const d3Nodes: D3Node[] = validNodes.map(n => {
+      const existing = currentSimNodes.find(en => en.id === n.id);
+      if (existing) {
+        // Retain current position/velocity coordinates while merging active changes like status, dims, risk, and isDimmed
+        return Object.assign(existing, n);
+      }
+      return { ...n } as D3Node;
+    });
+
     const d3Links: D3Link[] = links
       .map(l => {
         if (!l) return null;
@@ -92,94 +101,45 @@ export function NetworkGraph({
           ...l,
           source: sourceNode,
           target: targetNode
-        };
+        } as D3Link;
       })
       .filter((l): l is D3Link => l !== null);
 
-    const simulation = d3.forceSimulation<D3Node>(d3Nodes)
-      .force("link", d3.forceLink<D3Node, D3Link>(d3Links).id(d => d?.id || "").distance(60))
-      .force("charge", d3.forceManyBody().strength(visualSettings.graphForce || -300))
-      .force("center", d3.forceCenter(150, 150))
-      .force("collision", d3.forceCollide().radius(visualSettings.collisionRadius || 25));
+    if (!simulationRef.current) {
+      const simulation = d3.forceSimulation<D3Node>(d3Nodes)
+        .force("link", d3.forceLink<D3Node, D3Link>(d3Links).id(d => d?.id || "").distance(65))
+        .force("charge", d3.forceManyBody().strength(visualSettings.graphForce || -300))
+        .force("center", d3.forceCenter(150, 150))
+        .force("collision", d3.forceCollide().radius(visualSettings.collisionRadius || 26));
 
-    simulation.on("tick", () => {
-      setSimulationNodes([...simulation.nodes()]);
-      const linkForce = simulation.force("link") as d3.ForceLink<D3Node, D3Link>;
-      const currentLinks = linkForce ? (linkForce.links() || []) : [];
-      setSimulationLinks([...currentLinks]);
-    });
-
-    simulationRef.current = simulation;
-
-    if (isReplay) {
-      simulation.stop();
-    }
-
-    return () => {
-      simulation.stop();
-    };
-  }, []); // Run once
-
-  // Maintain precise synchronization with upstream topology deletions or additions
-  useEffect(() => {
-    if (!simulationRef.current) return;
-    const currentSimNodes = simulationRef.current.nodes();
-    const hasStructureChanged = nodes.length !== currentSimNodes.length || 
-      nodes.some(n => !currentSimNodes.some(cn => cn.id === n.id));
-
-    if (hasStructureChanged) {
-      const d3Nodes: D3Node[] = nodes.map(n => {
-        const existing = currentSimNodes.find(en => en.id === n.id);
-        return existing ? { ...existing, ...n } : { ...n };
+      simulation.on("tick", () => {
+        setSimulationNodes([...simulation.nodes()]);
+        const linkForce = simulation.force("link") as d3.ForceLink<D3Node, D3Link>;
+        const currentLinks = linkForce ? (linkForce.links() || []) : [];
+        setSimulationLinks([...currentLinks]);
       });
 
-      const d3Links: D3Link[] = links
-        .map(l => {
-          if (!l) return null;
-          const sourceId = typeof l.source === 'string' ? l.source : (l.source as any)?.id;
-          const targetId = typeof l.target === 'string' ? l.target : (l.target as any)?.id;
-          
-          const sourceNode = d3Nodes.find(n => n.id === sourceId);
-          const targetNode = d3Nodes.find(n => n.id === targetId);
-          
-          if (!sourceNode || !targetNode) return null;
-          
-          return {
-            ...l,
-            source: sourceNode,
-            target: targetNode
-          };
-        })
-        .filter((l): l is D3Link => l !== null);
-
+      simulationRef.current = simulation;
+    } else {
       simulationRef.current.nodes(d3Nodes);
       const linkForce = simulationRef.current.force("link") as d3.ForceLink<D3Node, D3Link>;
       if (linkForce) {
         linkForce.links(d3Links);
       }
-
-      setSimulationNodes([...d3Nodes]);
-      setSimulationLinks([...d3Links]);
-
-      if (isReplay) {
-        simulationRef.current.stop();
-      } else {
-        simulationRef.current.alpha(0.2).restart();
-      }
     }
-  }, [nodes, links, isReplay]);
 
-  // Freeze the simulation on replay mode transitions
-  useEffect(() => {
-    if (!simulationRef.current) return;
+    // Secure state alignment
+    setSimulationNodes([...d3Nodes]);
+    setSimulationLinks([...d3Links]);
+
     if (isReplay) {
       simulationRef.current.stop();
     } else {
-      simulationRef.current.alpha(0.2).restart();
+      simulationRef.current.alpha(0.3).restart();
     }
-  }, [isReplay]);
+  }, [nodes, links, isReplay]);
 
-  // Dynamic D3 Force Sync & Velocity Synchronization in real time
+  // Dynamic D3 Force Sync & Velocity Synchronization in real behavior
   useEffect(() => {
     if (!simulationRef.current || isReplay) return;
 
@@ -193,13 +153,9 @@ export function NetworkGraph({
       collision.radius(visualSettings.collisionRadius !== undefined ? visualSettings.collisionRadius : 25);
     }
 
-    // Map Temporal_Speed to simulation settlement / alpha decay rate:
-    // Standard decay index is 0.0228. Setting speed alters friction to change how dynamically nodes settle.
     const baseDecay = 0.0228;
     const speedFactor = visualSettings.speed !== undefined ? visualSettings.speed : 1;
     simulationRef.current.alphaDecay(baseDecay * speedFactor);
-
-    // Gently tick-start the simulation to animate force updates smoothly
     simulationRef.current.alpha(0.3).restart();
   }, [
     visualSettings.collisionRadius,
@@ -207,29 +163,6 @@ export function NetworkGraph({
     visualSettings.speed,
     isReplay
   ]);
-
-  // Sync statuses from props to simulation nodes
-  useEffect(() => {
-    setSimulationNodes(prevNodes => {
-      const anyChanged = nodes.some(n => {
-        const sim = prevNodes.find(sn => sn.id === n.id);
-        return sim && (sim.status !== n.status || sim.threatScore !== n.threatScore);
-      });
-
-      if (!anyChanged) return prevNodes;
-
-      return prevNodes.map(simNode => {
-        const updatedNode = nodes.find(n => n && n.id === simNode.id);
-        return updatedNode ? { 
-          ...simNode, 
-          status: updatedNode.status, 
-          label: updatedNode.label,
-          threatScore: updatedNode.threatScore,
-          lastAttackType: updatedNode.lastAttackType
-        } : simNode;
-      });
-    });
-  }, [nodes]);
 
   // Zoom and Drag behavior
   useEffect(() => {

@@ -143,32 +143,31 @@ export function AttackTimeline() {
     }
   }, [history]);
 
-  if (history.length === 0 && !status.isPlaying) return null;
-
   return (
     <motion.div 
-      initial={{ y: 100, opacity: 0 }}
+      initial={{ y: 120, opacity: 0 }}
       animate={{ y: 0, opacity: 1 }}
       className={cn(
-        "absolute bottom-6 left-6 right-6 z-25 border border-white/5 bg-[#03050d]/80 backdrop-blur-md rounded-md shadow-2xl transition-all duration-500 select-none pb-2 flex flex-col overflow-hidden",
-        isMinimized ? "h-12" : "h-[220px]"
+        "absolute bottom-0 left-0 right-0 z-30 border-t border-white/5 bg-[#020409]/95 backdrop-blur-xl transition-all duration-500 select-none pb-3 flex flex-col overflow-hidden shadow-[0_-10px_35px_rgba(0,0,0,0.9)]",
+        isMinimized ? "h-12" : "h-[235px]"
       )}
     >
       {/* Header / Controls */}
-      <div className="flex items-center justify-between px-6 h-12 border-b border-border-primary/40">
+      <div className="flex items-center justify-between px-6 h-12 border-b border-white/5 bg-void/35">
         <div className="flex items-center gap-6">
           <div className="flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-accent-cyan animate-pulse" />
             <Clock className="w-4 h-4 text-accent-cyan" />
             <span className="font-heading text-[10px] tracking-[2px] uppercase text-text-primary">SentinelX_Forensic_Timeline: {status.totalEvents > 0 && status.currentIndex < status.totalEvents ? 'RECONSTRUCTIONMODE' : 'LIVEMODEMATERIALIZED'}</span>
           </div>
-
+ 
           {/* Timeline Status */}
-          <div className="flex items-center gap-4 px-4 py-1 bg-black/40 rounded border border-border-primary/20">
+          <div className="flex items-center gap-4 px-4 py-1 bg-black/40 rounded border border-white/5">
             <div className="flex items-center gap-2">
               <span className="text-[9px] text-text-secondary uppercase">SEQUENCE_ID:</span>
               <span className="text-[10px] font-mono text-accent-cyan font-bold">{status.currentIndex} / {status.totalEvents}</span>
             </div>
-            <div className="w-px h-3 bg-border-primary/50" />
+            <div className="w-px h-3 bg-white/10" />
             <div className="flex items-center gap-2">
               <span className="text-[9px] text-text-secondary uppercase">TIMESTAMP:</span>
               <span className="text-[10px] font-mono text-text-primary">
@@ -183,14 +182,14 @@ export function AttackTimeline() {
 
         <div className="flex items-center gap-2">
           {/* Playback Controls */}
-          <div className="flex items-center gap-1 bg-void/50 p-1 border border-border-primary/20 rounded-sm">
+          <div className="flex items-center gap-1 bg-void/60 p-1 border border-white/5 rounded-sm">
             <ControlButton 
               icon={Search} 
               onClick={() => ReplayEngine.seek(history.length)} 
               tooltip="Jump to Live Sequence"
               active={status.currentIndex === status.totalEvents && !status.isPlaying}
             />
-            <div className="w-px h-4 bg-border-primary/20 mx-0.5" />
+            <div className="w-px h-4 bg-white/10 mx-0.5" />
             <ControlButton icon={SkipBack} onClick={() => ReplayEngine.seek(0)} tooltip="Seek to Root Boot State" />
             <ControlButton icon={ChevronLeft} onClick={() => ReplayEngine.stepBack()} tooltip="Step Back (Previous Event)" />
             <ControlButton 
@@ -200,9 +199,9 @@ export function AttackTimeline() {
               tooltip={status.isPlaying ? "Pause Timeline Loop" : "Play Timeline Loop"}
             />
             <ControlButton icon={ChevronRight} onClick={() => ReplayEngine.step()} tooltip="Step Forward (Next Event)" />
-            <div className="w-px h-4 bg-border-primary/50 mx-1" />
+            <div className="w-px h-4 bg-white/10 mx-1" />
             <select 
-              className="bg-transparent text-[8.5px] font-mono uppercase tracking-widest text-text-secondary px-2 outline-none cursor-pointer border-l border-border-primary/20"
+              className="bg-transparent text-[8.5px] font-mono uppercase tracking-widest text-text-secondary px-2 outline-none cursor-pointer border-l border-white/5"
               value={status.speed}
               onChange={(e) => ReplayEngine.setSpeed(Number(e.target.value))}
             >
@@ -213,11 +212,11 @@ export function AttackTimeline() {
             </select>
           </div>
 
-          <div className="w-px h-6 bg-border-primary/50 mx-2" />
+          <div className="w-px h-6 bg-white/10 mx-2" />
           
           <button 
             onClick={() => { setHistory([]); ReplayEngine.clearHistory(); }}
-            className="p-2 hover:bg-state-danger/10 text-text-secondary hover:text-state-danger rounded transition-colors"
+            className="p-1.5 hover:bg-state-danger/10 text-text-secondary hover:text-state-danger rounded transition-colors"
             title="Purge Forensic Logs"
           >
             <Trash2 className="w-4 h-4" />
@@ -225,7 +224,7 @@ export function AttackTimeline() {
           
           <button 
             onClick={() => setIsMinimized(!isMinimized)}
-            className="p-2 hover:bg-white/10 text-text-secondary rounded transition-colors"
+            className="p-1.5 hover:bg-white/10 text-text-secondary rounded transition-colors"
           >
             {isMinimized ? <Maximize2 className="w-4 h-4" /> : <Minimize2 className="w-4 h-4" />}
           </button>
@@ -236,18 +235,18 @@ export function AttackTimeline() {
       <AnimatePresence>
         {!isMinimized && (
           <motion.div 
-            initial={{ opacity: 0, y: 20 }}
+            initial={{ opacity: 0, y: 15 }}
             animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 20 }}
-            className="px-6 py-3 flex flex-col gap-3 overflow-hidden h-[calc(100%-48px)] bg-void/25"
+            exit={{ opacity: 0, y: 15 }}
+            className="px-6 py-3.5 flex flex-col gap-3.5 overflow-hidden h-[calc(100%-48px)] bg-void/10"
           >
             {/* Analytics Mini-Feed */}
             <div className="flex gap-6 items-center">
               <AnalyticsBadge label="Threat Vectors" value={markers.filter(m => m?.type === 'attack').length} color="text-state-danger" />
               <AnalyticsBadge label="Mitigations" value={markers.filter(m => m?.type === 'defense').length} color="text-accent-cyan" />
               <AnalyticsBadge label="Bookmarks" value={markers.filter(m => m?.type === 'bookmark').length} color="text-purple-400" />
-              <div className="flex-1 border-b border-dashed border-border-primary/20 h-px" />
-              <span className="text-[8px] font-mono text-text-secondary uppercase select-none">Total_Operational_Duration: {incidentDuration}</span>
+              <div className="flex-1 border-b border-dashed border-white/5 h-px" />
+              <span className="text-[8px] font-mono text-text-secondary uppercase select-none tracking-widest bg-white/5 px-2 py-0.5 rounded-sm border border-white/5">Total_Operational_Duration: {incidentDuration}</span>
             </div>
 
             {/* Premium Progress Scrubber Track */}
@@ -256,11 +255,11 @@ export function AttackTimeline() {
                 ref={scrubberRef}
                 onClick={handleScrub}
                 onMouseMove={(e) => e.buttons === 1 && handleScrub(e)}
-                className="relative h-4 bg-background-light/5 rounded cursor-pointer overflow-hidden border border-border-primary/20"
+                className="relative h-4 bg-void/90 rounded cursor-pointer overflow-hidden border border-white/5 focus-ring transition-all hover:border-accent-cyan/20"
               >
                 {/* Track Progress Fill */}
                 <div 
-                  className="absolute h-full bg-gradient-to-r from-accent-cyan/10 to-accent-cyan/30 border-r-2 border-accent-cyan shadow-[0_0_15px_rgba(0,255,209,0.25)] transition-all duration-100"
+                  className="absolute h-full bg-gradient-to-r from-accent-cyan/5 to-accent-cyan/25 border-r border-accent-cyan shadow-[0_0_15px_rgba(0,255,209,0.15)] transition-all duration-100 animate-pulse"
                   style={{ width: `${history.length > 0 ? (status.currentIndex / history.length) * 100 : 0}%` }}
                 />
 
@@ -269,10 +268,10 @@ export function AttackTimeline() {
                   <div 
                     key={m.index}
                     className={cn(
-                      "absolute top-0 bottom-0 w-[3px] transition-all z-10",
-                      m.type === 'bookmark' ? "bg-purple-500 shadow-[0_0_8px_#8b5cf6]" :
-                      m.type === 'attack' ? "bg-state-danger/70 shadow-[0_0_8px_rgba(239,68,68,0.5)]" : 
-                      m.type === 'critical' ? "bg-state-warning shadow-[0_0_8px_rgba(245,158,11,0.5)]" : "bg-accent-cyan/70 shadow-[0_0_8px_rgba(0,255,209,0.5)]"
+                      "absolute top-0 bottom-0 w-[4px] transition-all z-10",
+                      m.type === 'bookmark' ? "bg-purple-500 shadow-[0_0_10px_#8b5cf6]" :
+                      m.type === 'attack' ? "bg-state-danger/90 shadow-[0_0_10px_rgba(239,68,68,0.8)] animate-pulse" : 
+                      m.type === 'critical' ? "bg-state-warning shadow-[0_0_10px_rgba(245,158,11,0.8)]" : "bg-accent-cyan shadow-[0_0_10px_rgba(0,255,209,0.8)]"
                     )}
                     style={{ left: `${(m.index / history.length) * 100}%` }}
                     title={`Event index #${m.index} (${m.type})`}
@@ -282,23 +281,23 @@ export function AttackTimeline() {
               
               {/* Playhead Slider Handle */}
               <div 
-                className="absolute top-0 w-1.5 h-6 bg-accent-cyan shadow-[0_0_12px_#00FFD1] border border-white rounded-sm pointer-events-none transition-all duration-100 z-20"
+                className="absolute top-0 w-1.5 h-6 bg-accent-cyan shadow-[0_0_15px_#00FFD1] border border-white rounded-sm pointer-events-none transition-all duration-100 z-20"
                 style={{ left: `${history.length > 0 ? (status.currentIndex / history.length) * 100 : 0}%`, transform: 'translateX(-50%)' }}
               />
             </div>
 
             {/* Kill Chain Phase Guides (Atmospheric infrastructural layer) */}
-            <div className="flex justify-between text-[7px] font-mono text-text-tertiary/65 px-2 pb-1 tracking-[0.08em] border-b border-white/5 select-none font-bold">
-              <div className="flex items-center gap-1"><span className="w-1 h-1 rounded-full bg-indigo-500/50" /> RECONNAISSANCE</div>
-              <div className="flex items-center gap-1"><span className="w-1 h-1 rounded-full bg-cyan-500/50" /> DELIVERY & ACCESS</div>
-              <div className="flex items-center gap-1"><span className="w-1 h-1 rounded-full bg-orange-500/50" /> VULN EXPL_PLOITATION</div>
-              <div className="flex items-center gap-1"><span className="w-1 h-1 rounded-full bg-rose-500/50" /> PRIVILEGE ESCALATION</div>
-              <div className="flex items-center gap-1"><span className="w-1 h-1 rounded-full bg-pink-500/50" /> LATERAL_WORKLOAD_PROPAGATION</div>
-              <div className="flex items-center gap-1"><span className="w-1 h-1 rounded-full bg-red-500/50" /> EXFILTRATION & DIRECT IMPACT</div>
+            <div className="flex justify-between text-[7px] font-mono text-text-tertiary/75 px-2 pb-1.5 tracking-[0.1em] border-b border-white/5 select-none font-bold">
+              <div className="flex items-center gap-1.5"><span className="w-1 h-1 rounded-full bg-indigo-500/50" /> RECONNAISSANCE</div>
+              <div className="flex items-center gap-1.5"><span className="w-1 h-1 rounded-full bg-cyan-500/50" /> DELIVERY & ACCESS</div>
+              <div className="flex items-center gap-1.5"><span className="w-1 h-1 rounded-full bg-orange-500/50" /> VULN EXPL_PLOITATION</div>
+              <div className="flex items-center gap-1.5"><span className="w-1 h-1 rounded-full bg-rose-500/50" /> PRIVILEGE ESCALATION</div>
+              <div className="flex items-center gap-1.5"><span className="w-1 h-1 rounded-full bg-pink-500/50 animate-pulse" /> LATERAL_WORKLOAD_PROPAGATION</div>
+              <div className="flex items-center gap-1.5"><span className="w-1 h-1 rounded-full bg-red-500/50" /> EXFILTRATION & DIRECT IMPACT</div>
             </div>
 
             {/* Event Snapshots (Visual Feed) - Rich Forensic Cards */}
-            <div className="flex gap-3 overflow-x-auto pb-1 scrollbar-thin scrollbar-track-void/10 scrollbar-thumb-border-primary/40 mask-fade-edges">
+            <div className="flex gap-3 overflow-x-auto pb-1 scrollbar-thin scrollbar-track-void/10 scrollbar-thumb-white/10 mask-fade-edges">
               {history.map((ev, globalIndex) => {
                 const isActive = globalIndex === status.currentIndex - 1;
                 const meta = getForensicMetadata(ev, globalIndex);
@@ -309,28 +308,28 @@ export function AttackTimeline() {
                     key={`${ev.topic}-${globalIndex}-${ev.payload?.eventId}`}
                     onClick={() => ReplayEngine.seek(globalIndex + 1)}
                     className={cn(
-                      "flex-shrink-0 w-52 p-2.5 rounded border transition-all cursor-pointer group flex flex-col justify-between h-20",
+                      "flex-shrink-0 w-52 p-2.5 rounded border transition-all cursor-pointer group flex flex-col justify-between h-20 bg-void/50",
                       isActive 
-                        ? "bg-accent-cyan/10 border-accent-cyan/80 shadow-[0_0_15px_rgba(0,255,209,0.1)]" 
-                        : "bg-void/40 border-border-primary/20 hover:border-border-primary/55"
+                        ? "bg-accent-cyan/15 border-accent-cyan/100 shadow-[0_0_20px_rgba(0,255,209,0.15)] ring-1 ring-accent-cyan/30" 
+                        : "border-white/5 hover:border-white/20"
                     )}
                   >
                     <div>
                       <div className="flex items-center justify-between mb-1 gap-1">
                         <span className={cn(
-                          "text-[7.5px] font-bold uppercase truncate px-1 rounded-sm leading-normal border",
+                          "text-[7px] font-bold uppercase truncate px-1 rounded-xs leading-normal border",
                           meta.badgeColor
                         )}>
                           {meta.phase}
                         </span>
-                        <span className="text-[6px] font-mono opacity-40 shrink-0">#{globalIndex + 1}</span>
+                        <span className="text-[6px] font-mono opacity-45 shrink-0">#{globalIndex + 1}</span>
                       </div>
-                      <p className="text-[8.5px] line-clamp-2 leading-[1.2] text-text-secondary group-hover:text-text-primary transition-colors font-sans mb-1 uppercase font-semibold">
+                      <p className="text-[8px] line-clamp-2 leading-[1.2] text-text-secondary group-hover:text-text-primary transition-colors font-sans mb-1 uppercase font-semibold tracking-wide">
                         {meta.icon} {(ev.payload as any).message || ev.topic}
                       </p>
                     </div>
 
-                    <div className="flex items-center justify-between text-[6px] font-mono border-t border-border-primary/15 pt-1 mt-auto">
+                    <div className="flex items-center justify-between text-[6px] font-mono border-t border-white/5 pt-1 mt-auto">
                       <span className="text-text-tertiary">
                         {new Date(ev.payload.timestamp).toLocaleTimeString()}
                       </span>

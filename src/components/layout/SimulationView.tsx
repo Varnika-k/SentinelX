@@ -234,6 +234,7 @@ export function SimulationView({
               allLinks={simulationState.links}
               knowledgeBase={simulationState.knowledgeBase}
               defenseRecommendations={simulationState.defenseRecommendations}
+              onHighlightNode={setHighlightedNodeId}
             />
           </motion.div>
         );
@@ -1137,6 +1138,7 @@ export function SimulationView({
                     allLinks={simulationState.links}
                     knowledgeBase={simulationState.knowledgeBase}
                     defenseRecommendations={simulationState.defenseRecommendations}
+                    onHighlightNode={setHighlightedNodeId}
                   />
                 </div>
               )}

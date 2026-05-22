@@ -119,8 +119,6 @@ export default function App() {
 
         {showDiagnostics && <TelemetryDiagnostics />}
 
-        <AttackTimeline />
-
         {/* Global Cinematic Accents */}
         <div className="fixed inset-0 pointer-events-none z-0">
           <div className="absolute top-0 left-0 w-full h-px bg-gradient-to-r from-transparent via-accent-cyan/30 to-transparent animate-scanline" />

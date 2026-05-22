@@ -33,22 +33,30 @@ export const GraphLink = React.memo(({
   const isCompromised = source.status === 'compromised' || target.status === 'compromised';
   const bothCompromised = source.status === 'compromised' && target.status === 'compromised';
   const isIsolated = source.status === 'isolated' || target.status === 'isolated';
+  const isQuarantined = source.status === 'quarantined' || target.status === 'quarantined';
   
   // Instability check: high latency source/target OR high traffic weight
   const isUnstable = showCommunicationInstability && (traffic > 0.65 || (source.latency && source.latency > 50) || (target.latency && target.latency > 50));
   const isActiveRed = isCompromised || showHeatmap;
+  const isRerouted = traffic !== undefined && traffic > 0.45 && source.status === 'safe' && target.status === 'safe';
 
   // Custom line stroke width and style mappings
   const strokeWidth = bothCompromised 
     ? 2.5 * visualSettings.intensity 
     : isUnstable 
     ? 2 * visualSettings.intensity 
+    : isRerouted
+    ? 1.8 * visualSettings.intensity
+    : isIsolated 
+    ? 0.5
     : 1;
 
   const getLineClassName = () => {
-    if (isIsolated) return "stroke-state-iso/10";
+    if (isIsolated) return "stroke-state-iso/5";
     if (isCompromised) return "stroke-state-danger/40";
-    if (isUnstable) return "stroke-state-warning/60";
+    if (isQuarantined) return "stroke-amber-500/35";
+    if (isUnstable) return "stroke-state-warning/50";
+    if (isRerouted) return "stroke-accent-cyan/50";
     return "stroke-white/10";
   };
 
@@ -59,11 +67,11 @@ export const GraphLink = React.memo(({
         x2={target.x || 0} y2={target.y || 0}
         className={cn("transition-all duration-500", getLineClassName())}
         strokeWidth={strokeWidth}
-        strokeDasharray={isActiveRed ? "none" : isUnstable ? "2 2" : "4 4"}
+        strokeDasharray={isIsolated ? "1 8" : isActiveRed ? "none" : isUnstable ? "2 2" : "4 4"}
       />
       
       {/* Dynamic Visual Flow Animation / Pulsing overlay */}
-      {isActiveRed ? (
+      {isIsolated ? null : isActiveRed ? (
         <motion.line
           x1={source.x || 0} y1={source.y || 0}
           x2={target.x || 0} y2={target.y || 0}
@@ -73,6 +81,28 @@ export const GraphLink = React.memo(({
           }}
           transition={{ duration: 1.5 / visualSettings.speed, repeat: Infinity, ease: "easeInOut" }}
           className="stroke-state-danger/30 pointer-events-none"
+        />
+      ) : isQuarantined ? (
+        <motion.line
+          x1={source.x || 0} y1={source.y || 0}
+          x2={target.x || 0} y2={target.y || 0}
+          animate={{ 
+            strokeOpacity: [0.2, 0.6 * visualSettings.glow, 0.2],
+            strokeWidth: [1, 2.5 * visualSettings.intensity, 1] 
+          }}
+          transition={{ duration: 2 / visualSettings.speed, repeat: Infinity, ease: "easeInOut" }}
+          className="stroke-amber-500/25 pointer-events-none"
+        />
+      ) : isRerouted ? (
+        <motion.line
+          x1={source.x || 0} y1={source.y || 0}
+          x2={target.x || 0} y2={target.y || 0}
+          animate={{ 
+            strokeOpacity: [0.3, 0.75 * visualSettings.glow, 0.3],
+            strokeWidth: [1, 2.5 * visualSettings.intensity, 1] 
+          }}
+          transition={{ duration: 1 / visualSettings.speed, repeat: Infinity, ease: "easeInOut" }}
+          className="stroke-accent-cyan/40 pointer-events-none"
         />
       ) : isUnstable ? (
         <motion.line
@@ -85,7 +115,7 @@ export const GraphLink = React.memo(({
           transition={{ duration: 0.8 / visualSettings.speed, repeat: Infinity, ease: "easeIn" }}
           className="stroke-state-warning/40 pointer-events-none"
         />
-      ) : !isIsolated && (
+      ) : (
         <line
           x1={source.x || 0} y1={source.y || 0}
           x2={target.x || 0} y2={target.y || 0}
@@ -121,6 +151,56 @@ export const GraphLink = React.memo(({
                 delay: i * (0.5 / visualSettings.speed)
               }}
               className="fill-state-danger blur-[1px]"
+            />
+          ))}
+        </React.Fragment>
+      )}
+
+      {/* Quarantine alert glow waves */}
+      {isQuarantined && (
+        <React.Fragment>
+          {[0, 1].map((i) => (
+            <motion.circle
+              key={`quar-pulse-${i}`}
+              r={2 * visualSettings.intensity}
+              animate={{
+                cx: [source.x || 0, target.x || 0],
+                cy: [source.y || 0, target.y || 0],
+                opacity: [0, 0.7 * visualSettings.glow, 0],
+                scale: [0.8, 1.6, 0.8]
+              }}
+              transition={{
+                duration: 2.2 / visualSettings.speed,
+                repeat: Infinity,
+                ease: "linear",
+                delay: i * (1.1 / visualSettings.speed)
+              }}
+              className="fill-amber-500 blur-[0.5px]"
+            />
+          ))}
+        </React.Fragment>
+      )}
+
+      {/* Illuminated rerouted data waves */}
+      {isRerouted && (
+        <React.Fragment>
+          {[0, 1, 2].map((i) => (
+            <motion.circle
+              key={`reroute-wave-${i}`}
+              r={1.8 * visualSettings.intensity}
+              animate={{
+                cx: [source.x || 0, target.x || 0],
+                cy: [source.y || 0, target.y || 0],
+                opacity: [0, 0.9 * visualSettings.glow, 0],
+                scale: [0.8, 1.4, 0.8]
+              }}
+              transition={{
+                duration: 1.2 / visualSettings.speed,
+                repeat: Infinity,
+                ease: "linear",
+                delay: i * (0.4 / visualSettings.speed)
+              }}
+              className="fill-accent-cyan blur-[0.5px]"
             />
           ))}
         </React.Fragment>

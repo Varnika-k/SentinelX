@@ -9,7 +9,9 @@ import { initializeDatabase } from './db/data-source';
 import { DatabaseService } from './db/service';
 import { TelemetryWorker } from './workers/telemetry-worker';
 import { digitalTwinEngine } from './simulation/twin-engine';
+import { graphIntelligenceEngine } from './simulation/graph-intelligence';
 import { cloudTelemetryService } from './services/cloud-telemetry';
+import { telemetryPipeline } from './telemetry/pipeline';
 
 import { aiService } from './services/ai';
 
@@ -157,7 +159,11 @@ export class SentinelBackend {
           tickCount: digitalTwinEngine.tickCount,
           threatLevel: digitalTwinEngine.threatLevel,
           sessionId: digitalTwinEngine.sessionId,
-          nodes: Array.from(digitalTwinEngine.nodes.values())
+          nodes: Array.from(digitalTwinEngine.nodes.values()),
+          sectors: digitalTwinEngine.getSectorMetrics(),
+          aarTimeline: digitalTwinEngine.getAarTimeline(),
+          survivabilityScore: digitalTwinEngine.getSurvivabilityScore(),
+          operationalContinuity: digitalTwinEngine.getOperationalContinuity()
         });
       } catch (error) {
         res.status(500).json({ error: 'Failed to fetch simulation status' });
@@ -183,26 +189,63 @@ export class SentinelBackend {
     });
 
     this.app.post('/api/v1/simulation/node/action', (req, res) => {
+       try {
+         const { nodeName, action } = req.body;
+         if (action === 'isolate') {
+           digitalTwinEngine.isolateSimulatedNode(nodeName);
+         } else if (action === 'scale') {
+           digitalTwinEngine.scaleUpWorkload(nodeName);
+         } else if (action === 'chaos') {
+           digitalTwinEngine.injectChaosFailure(nodeName);
+         } else if (action === 'rotate') {
+           digitalTwinEngine.rotateNodeSecrets(nodeName);
+         } else if (action === 'block') {
+           digitalTwinEngine.blockNodeTraffic(nodeName);
+         }
+         res.json({ success: true });
+       } catch (error) {
+         res.status(500).json({ error: (error as Error).message });
+       }
+     });
+
+    this.app.get('/api/v1/simulation/what-if/:nodeName', (req, res) => {
+       try {
+         const result = digitalTwinEngine.getWhatIfScenarios(req.params.nodeName);
+         res.json(result);
+       } catch (error) {
+         res.status(500).json({ error: (error as Error).message });
+       }
+     });
+
+    this.app.get('/api/v1/simulation/graph-analytics', (req, res) => {
       try {
-        const { nodeName, action } = req.body;
-        if (action === 'isolate') {
-          digitalTwinEngine.isolateSimulatedNode(nodeName);
-        } else if (action === 'scale') {
-          digitalTwinEngine.scaleUpWorkload(nodeName);
-        } else if (action === 'chaos') {
-          digitalTwinEngine.injectChaosFailure(nodeName);
-        }
-        res.json({ success: true });
+        const nodes = Array.from(graphIntelligenceEngine.nodes.values());
+        const edges = graphIntelligenceEngine.edges;
+        res.json({
+          nodes,
+          edges
+        });
       } catch (error) {
         res.status(500).json({ error: (error as Error).message });
       }
     });
 
-    this.app.get('/api/v1/simulation/what-if/:nodeName', (req, res) => {
+    this.app.post('/api/v1/telemetry/wazuh', async (req, res) => {
       try {
-        const result = digitalTwinEngine.getWhatIfScenarios(req.params.nodeName);
-        res.json(result);
+        const canonicalEvent = await telemetryPipeline.ingestWazuhAlert(req.body);
+        res.json({ success: true, event: canonicalEvent });
       } catch (error) {
+        logger.error('Wazuh ingestion API error', error);
+        res.status(500).json({ error: (error as Error).message });
+      }
+    });
+
+    this.app.post('/api/v1/telemetry/falco', async (req, res) => {
+      try {
+        const canonicalEvent = await telemetryPipeline.ingestFalcoAlert(req.body);
+        res.json({ success: true, event: canonicalEvent });
+      } catch (error) {
+        logger.error('Falco ingestion API error', error);
         res.status(500).json({ error: (error as Error).message });
       }
     });

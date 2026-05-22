@@ -23,6 +23,13 @@ export interface DefenseRecommendation {
   impactScore: number; // Predicted decrease in risk
   timestamp: number;
   status: 'pending' | 'applied' | 'dismissed';
+  title?: string;
+  rationale?: string;
+  predictedImpact?: string;
+  mitigationProbability?: number; // 0 to 1
+  operationalCost?: 'Low' | 'Medium' | 'High';
+  affectedInfrastructure?: string;
+  urgency?: 'Routine' | 'High' | 'Urgent' | 'Critical';
 }
 
 export interface DefenseStrategy {

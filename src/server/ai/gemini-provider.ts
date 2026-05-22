@@ -32,9 +32,70 @@ export class GeminiProvider implements AIProvider {
             reasoning: { type: Type.ARRAY, items: { type: Type.STRING } },
             recommendations: { type: Type.ARRAY, items: { type: Type.STRING } },
             threatLevel: { type: Type.STRING, enum: ['low', 'medium', 'high', 'critical'] },
-            confidence: { type: Type.NUMBER }
+            confidence: { type: Type.NUMBER },
+            
+            // Phase 6 Structured Core Intelligence
+            threatClassification: { type: Type.STRING },
+            blastRadius: { type: Type.NUMBER },
+            affectedInfrastructure: { type: Type.ARRAY, items: { type: Type.STRING } },
+            trustDegradation: { type: Type.NUMBER },
+            propagationProbability: { type: Type.NUMBER },
+            operationalImpact: { type: Type.STRING },
+            
+            mitigations: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  type: { type: Type.STRING },
+                  action: { type: Type.STRING },
+                  successProbability: { type: Type.NUMBER },
+                  rationale: { type: Type.STRING },
+                  sideEffects: { type: Type.STRING },
+                  infrastructureImpact: { type: Type.STRING }
+                },
+                required: ['type', 'action', 'successProbability', 'rationale', 'sideEffects', 'infrastructureImpact']
+              }
+            },
+            
+            adversaryBehavior: {
+              type: Type.OBJECT,
+              properties: {
+                tactics: { type: Type.ARRAY, items: { type: Type.STRING } },
+                techniques: { type: Type.ARRAY, items: { type: Type.STRING } },
+                stages: { type: Type.ARRAY, items: { type: Type.STRING } },
+                mitreAlignment: { type: Type.STRING }
+              },
+              required: ['tactics', 'techniques', 'stages', 'mitreAlignment']
+            },
+            
+            adaptiveThreatDetails: {
+              type: Type.OBJECT,
+              properties: {
+                adaptabilityRisk: { type: Type.STRING, enum: ['low', 'medium', 'high', 'autonomous'] },
+                payloadMutationPattern: { type: Type.STRING },
+                behaviouralAdaptation: { type: Type.STRING }
+              },
+              required: ['adaptabilityRisk', 'behaviouralAdaptation']
+            },
+
+            replayAnalysis: {
+              type: Type.OBJECT,
+              properties: {
+                isReplayContext: { type: Type.BOOLEAN },
+                incidentDurationSeconds: { type: Type.NUMBER },
+                timelineSummary: { type: Type.STRING },
+                rootCauseReasoning: { type: Type.STRING }
+              },
+              required: ['isReplayContext']
+            }
           },
-          required: ['summary', 'reasoning', 'recommendations', 'threatLevel', 'confidence']
+          required: [
+            'summary', 'reasoning', 'recommendations', 'threatLevel', 'confidence',
+            'threatClassification', 'blastRadius', 'affectedInfrastructure', 
+            'trustDegradation', 'propagationProbability', 'operationalImpact', 'mitigations',
+            'adversaryBehavior', 'adaptiveThreatDetails', 'replayAnalysis'
+          ]
         }
       }
     });
@@ -48,7 +109,7 @@ export class GeminiProvider implements AIProvider {
   }
 
   async stream(request: AIAnalysisRequest, onChunk: (chunk: string) => void): Promise<void> {
-    const prompt = this.buildPrompt(request) + "\n\nProvide the analysis in a structured operational format. Be concise and technical.";
+    const prompt = this.buildPrompt(request) + "\n\nProvide the analysis in an elite technical operational format. Keep responses brief, authoritative, and structured without intro/outro fluff.";
     
     const result = await this.client.models.generateContentStream({
       model: "gemini-3.5-flash",
@@ -64,58 +125,92 @@ export class GeminiProvider implements AIProvider {
 
   private buildPrompt(request: AIAnalysisRequest): string {
     const { type, context } = request;
-    const { nodes, links, events, targetNode, recentActivity, graphAnalytics } = context;
+    const { 
+      nodes, 
+      links, 
+      events, 
+      targetNode, 
+      recentActivity, 
+      graphAnalytics, 
+      isReplayActive, 
+      replaySessionId,
+      simulationScenario 
+    } = context;
 
-    let prompt = `You are SentinelX Intelligence Core - an elite CyOps and autonomous defense planner.
-    Conduct a forensic and operations-aware threat propagation review.
+    let prompt = `You are SentinelX Operational Intelligence Core - an elite CyOps Reasoning Runtime and infrastructure-aware cyber analyst.
+    Classify, dissect, and reason over active threats in the digital twin namespace.
     
+    === OPERATIONAL ENVIRONMENT ===
     OPERATION_TYPE: ${type.toUpperCase()}
-    NETWORK_NODES: ${nodes ? nodes.length : 0} nodes online in digital twin
-    NETWORK_LINKS: ${links ? links.length : 0} linking threads active
-    RECENT_EVENTS: ${events ? events.length : 0} logs ingested
+    SIMULATION_SCENARIO: ${simulationScenario || 'Standard Operations'}
+    REPLAY_CONTEXT_DECLARED: ${isReplayActive ? `TRUE (Session: ${replaySessionId})` : 'FALSE (Real-time stream/Digital Twin)'}
+    NETWORK_NODES: ${nodes ? nodes.length : 0} nodes running
+    NETWORK_LINKS: ${links ? links.length : 0} communication routes active
+    INGESTED_ALERTS: ${events ? events.length : 0} active signals
     `;
 
     if (graphAnalytics) {
       prompt += `
-      GRAPH_INTELLIGENCE_METRICS:
-      Critical Infrastructure Paths: ${JSON.stringify(graphAnalytics.criticalPaths)}
-      Crown Jewel Exposure Weights: ${JSON.stringify(graphAnalytics.crownJewelRisk)}
-      Lateral Propagation Vectors: ${JSON.stringify(graphAnalytics.lateralMovementProbability?.slice(0, 4))}
-      
-      AUTONOMOUS_DEFENSE_PROPOSALS:
-      Active Recommendations: ${JSON.stringify(context.defenseRecommendations || [])}
+      === GRAPH TOPOLOGY INTELLIGENCE ===
+      We have compiled the active topological graph and evaluated critical paths.
+      Critical Infrastructure Paths: ${JSON.stringify(graphAnalytics.criticalPaths || [])}
+      Crown Jewel Exposure Weights: ${JSON.stringify(graphAnalytics.crownJewelRisk || [])}
+      Lateral Propagation Vectors: ${JSON.stringify(graphAnalytics.lateralMovementProbability?.slice(0, 4) || [])}
+      Resilience Index Baseline: ${graphAnalytics.resilienceIndex || 'Unknown'}
+      Predicted Infrastructure Stress: ${JSON.stringify(graphAnalytics.infrastructurePressure?.slice(0, 4) || [])}
       `;
     }
 
     if (targetNode) {
       prompt += `
-      TARGETED_INFRASTRUCTURE_SPEC_FOCUS:
-      ID: ${targetNode.id}
+      === CURRENT FOCUS NODE ID: ${targetNode.id || targetNode.name} ===
+      Label: ${targetNode.label || targetNode.name}
       Type: ${targetNode.type}
-      Status: ${targetNode.status} (Infection/Degradation Scope)
-      Threat Score: ${targetNode.threatScore}/100
-      Latency Profile: ${targetNode.latency || 12}ms
-      Degradation Coefficient: ${targetNode.degradation || 0}%
-      Exposure Index: ${targetNode.vulnerability}
-      Last Event Footprint: ${targetNode.lastAttackType || 'None'}
+      Status: ${targetNode.status}
+      Threat Score: ${targetNode.threatScore || targetNode.riskScore}/100
+      Trust Evaluation Index: ${targetNode.trustScore ?? 'Pending'}
+      Compromise Probability: ${targetNode.compromiseProbability ?? 'Pending'}
+      Resilience Index: ${targetNode.resilienceScore ?? 'Pending'}
+      Exposure Blast Radius: ${targetNode.exposureScore ?? 'Pending'}
+      Criticality Scale: ${targetNode.criticality ?? targetNode.operationalCriticality ?? 0.5}
+      Latency: ${targetNode.latency || 12}ms
       `;
     }
 
     if (recentActivity && recentActivity.length > 0) {
       prompt += `
-      REAL-TIME INGESTION STREAM (FIRST-RESPONSE AUDITS):
+      === ACTIVE TELEMETRY INGESTION STREAM ===
       ${JSON.stringify(recentActivity.slice(-8))}
       `;
     }
 
     prompt += `
-    CRITICAL COGNITIVE OBJECTIVES:
-    1. EXPLAIN THE THREAT: Analyze the root cause of anomalous behaviors seen in the ingestion stream.
-    2. PREDICT SPREAD: Determine the risk of lateral propagation down critical network paths to crown jewel nodes (e.g., db-tier, serverless core).
-    3. RECOMMENDED CONTAINMENT: Formulate a tier-1 tactical isolation plan (e.g. isolate_node, quarantine_workload, block_traffic, terminate_process, rotate_credentials). Give actionable steps.
-    4. OPERATIONAL PRESSURE: Detail the performance cost. Assess node degradation, throughput drops, latency anomalies, and overall cyber operational friction.
+    === CORE REASONING OBJECTIVES ===
+    Analyze this cyber range state with full graph, telemetry, and mitigation awareness.
     
-    STRICT SEC_COMMANDS: Maintain an extremely professional, calm, military-grade SOC threat briefing tone. Under no circumstances use conversational intros, greetings, self-praising or flowery AI descriptions. Keep recommendations highly actionable and aligned with SentinelX defense API values.
+    1. THREAT CLASSIFICATION & MITRE ALIGNMENT: 
+       Classify the incident strictly into one of: Ransomware Propagation, Credential Compromise, Insider Threat, Privilege Escalation, Lateral Movement, Runtime Compromise, AI-Assisted Attack, Cloud Abuse, or Adaptive Malware. Identify MITRE ATT&CK tactics (e.g. TA0008 Lateral Movement, TA0004 Privilege Escalation) and stages.
+       
+    2. GRAPH RELATIONSHIPS & ATTACK PROPAGATION: 
+       Evaluate trust boundaries and determine which node is threatened next. Calculate blast radius (0-100) and identify exact impacted infrastructure components (e.g., k8s pods, payment gateways, active directory connectors).
+       
+    3. DETAILED DEFENSE RECOMMENDATIONS: 
+       Recommend at least 2 distinct mitigations. For each mitigation, dictate:
+       - Success probability (0% to 100%)
+       - Rationale (WHY it mitigates the attack vector)
+       - Side effects (Operational tradeoffs, performance bottlenecks, connection drops)
+       - Infrastructure impact (Effect on topology path and lateral spread)
+       
+    4. REPLAY-AWARE FORENSICS (IF REPLAY IS ACTIVE):
+       Detail the incident duration, summarize the attack timeline, and reconstruct how the threat evolved. Use historical data to evaluate.
+       
+    5. ADAPTIVE AI THREAT ANALYSIS (BEHAVIORAL ADAPTATION):
+       Determine if the adversary is exhibiting autonomous, adaptive, or mutate-on-the-fly properties. Report adaptability risk as low, medium, high, or autonomous. State the payload mutation patterns or behavioral adaptation characteristics.
+
+    === OUTPUT PROTOCOL ===
+    - Produce highly precise, tactical, professional intelligence.
+    - Sound authoritative, structured, and infrastructure-aware.
+    - Zero conversational greetings or standard chat closures.
     `;
 
     return prompt;
