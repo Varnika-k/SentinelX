@@ -138,7 +138,7 @@ export class UnifiedEventBus {
         }
 
         // 4. WebSocket Broadcast
-        realtimeBroadcastSystem.broadcastEvent(event);
+        realtimeFSystem.broadcastEvent(event);
 
       } catch (err) {
         logger.error(`UnifiedEventBus: Processing failure for Event ID ${event.id}`, err);

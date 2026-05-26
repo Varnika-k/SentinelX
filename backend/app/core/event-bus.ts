@@ -157,3 +157,11 @@ class EventBus extends EventEmitter {
 }
 
 export const eventBus = EventBus.getInstance();
+export const EVENT_TOPICS = {
+  ATTACK_ALERT: 'attack:alert',
+  NODE_UPDATE: 'node:update',
+  DEFENSE_ACTION: 'defense:action',
+  SYSTEM_LOG: 'system:log',
+  TELEMETRY_ALERT: 'telemetry:alert',
+  TELEMETRY_EVENT: 'telemetry:event',
+};
