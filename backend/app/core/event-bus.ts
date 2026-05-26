@@ -84,7 +84,7 @@ class EventBus extends EventEmitter {
     }
 
     try {
-      await client.publish(topic, JSON.stringify(envelope));
+      this.localDispatch(topic, payload);
     } catch (error) {
       logger.error(`Redis publish failed for topic ${topic}`, error);
       // Fallback to local dispatch

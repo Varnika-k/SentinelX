@@ -11,10 +11,10 @@ export class ReplaySessionEntity {
   @Column('text', { nullable: true })
   description: string;
 
-  @Column('timestamp')
+  @Column('datetime')
   startTime: Date;
 
-  @Column('timestamp')
+  @Column('datetime')
   endTime: Date;
 
   @CreateDateColumn()

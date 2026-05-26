@@ -5,7 +5,7 @@ export class UnifiedOperationalEventEntity {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column('timestamp')
+  @Column('datetime')
   @Index()
   timestamp: Date;
 

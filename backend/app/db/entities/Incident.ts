@@ -20,7 +20,7 @@ export class IncidentEntity {
   @CreateDateColumn()
   startTime: Date;
 
-  @Column({ type: 'timestamp', nullable: true })
+  @Column({ type: 'datetime', nullable: true })
   endTime: Date;
 
   @Column('text')
