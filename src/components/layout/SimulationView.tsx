@@ -6,7 +6,8 @@ import { ReplayEngine, ReplayStatus } from '../../telemetry/replay';
 import { 
   Shield, Network, LogOut, HelpCircle, Settings, Layout, Zap, BrainCircuit, 
   Activity as ActivityIcon, Maximize2, Minimize2, Filter, Clock, Compass, 
-  Crosshair, Key, WifiOff, Terminal, Lock, ShieldAlert, ShieldCheck 
+  Crosshair, Key, WifiOff, Terminal, Lock, ShieldAlert, ShieldCheck, LayoutGrid,
+  ChevronDown
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { NetworkNode } from '../../types/network';
@@ -49,6 +50,7 @@ interface SimulationViewProps {
     applyDefenseRecommendation: (rec: any) => void;
     dismissDefenseRecommendation: (recId: string) => void;
     setSpreadVelocity: (velocity: number) => void;
+    setDefenseStrategyMode?: (mode: 'balanced' | 'aggressive' | 'forensics' | 'resilience') => void;
     toggleSimulation: () => void;
   };
   selectedNode: NetworkNode | null;
@@ -59,11 +61,17 @@ interface SimulationViewProps {
   onSetShowReport: (show: boolean) => void;
   onExit: () => void;
   onOpenManual: () => void;
+  operatorRole?: string;
+  activeTenant?: string;
+  onEscalateRole?: (role: string) => void;
 }
 
 export function SimulationView({
   simulationState,
   isOnline,
+  operatorRole = 'Administrator',
+  activeTenant = 'CORE_INTEL_US_EAST',
+  onEscalateRole,
   simulationActions,
   selectedNode,
   onSelectNode,
@@ -93,6 +101,7 @@ export function SimulationView({
   // State Extensions
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isIncidentFocusMode, setIsIncidentFocusMode] = useState(false);
+  const [isRoleDropdownOpen, setIsRoleDropdownOpen] = useState(false);
   const [utcTime, setUtcTime] = useState('');
   const [showSegmentation, setShowSegmentation] = useState(false);
   const [showCommunicationInstability, setShowCommunicationInstability] = useState(false);
@@ -177,6 +186,95 @@ export function SimulationView({
     });
   }, [simulationState.nodes, simulationState.links, isIncidentFocusMode]);
 
+  // Sector integrity metrics for Strategic Situational Awareness (Infrastructure Cognition)
+  const sectorWeights = useMemo(() => {
+    const zones = {
+      perimeter: { total: 0, compromised: 0 },
+      core: { total: 0, compromised: 0 },
+      app: { total: 0, compromised: 0 },
+      data: { total: 0, compromised: 0 },
+    };
+
+    simulationState.nodes.forEach(node => {
+      let zone: keyof typeof zones = 'app';
+      if (node.id.startsWith('gw') || node.id.includes('gateway')) {
+        zone = 'perimeter';
+      } else if (node.id.startsWith('core') || node.id.includes('switch')) {
+        zone = 'core';
+      } else if (node.id.startsWith('db') || node.type === 'database') {
+        zone = 'data';
+      } else {
+        zone = 'app';
+      }
+      zones[zone].total++;
+      if (node.status === 'compromised' || node.status === 'degraded') {
+        zones[zone].compromised++;
+      }
+    });
+
+    return {
+      perimeter: zones.perimeter.total > 0 ? Math.round(((zones.perimeter.total - zones.perimeter.compromised) / zones.perimeter.total) * 100) : 100,
+      core: zones.core.total > 0 ? Math.round(((zones.core.total - zones.core.compromised) / zones.core.total) * 100) : 100,
+      app: zones.app.total > 0 ? Math.round(((zones.app.total - zones.app.compromised) / zones.app.total) * 100) : 100,
+      data: zones.data.total > 0 ? Math.round(((zones.data.total - zones.data.compromised) / zones.data.total) * 100) : 100,
+    };
+  }, [simulationState.nodes]);
+
+  // Estimated Operational Cognitive survivability timeline
+  const survivalTimeFrame = useMemo(() => {
+    switch (simulationState.threatLevel) {
+      case 'critical':
+        return '02:45m - IMPENDING EXPLOIT DEGRADATION';
+      case 'high':
+        return '14:30m - ACTIVE LATERAL PROPAGATION';
+      case 'medium':
+        return '45:15m - MITIGABLE ESCALATIONS DETECTED';
+      case 'low':
+      default:
+        return '99:00m+ - SYSTEM SYMMETRICAL HEURISTICS SECURE';
+    }
+  }, [simulationState.threatLevel]);
+
+  // Replay Attack campaign path highlights
+  const compromiseSequences = useMemo(() => {
+    return simulationState.events
+      .filter(ev => ev.severity === 'high' || ev.severity === 'critical')
+      .slice(-4)
+      .reverse();
+  }, [simulationState.events]);
+
+  // Dynamic offset tracking for precision viewport centering
+  const { leftOffset, rightOffset } = useMemo(() => {
+    if (isFullscreen) {
+      return { leftOffset: 0, rightOffset: 0 };
+    }
+    
+    let left = 0;
+    let right = 0;
+    
+    // Left sidebar width calculations
+    if (activeWorkspace === 'operations') left = 340;
+    else if (activeWorkspace === 'forensics') left = 340;
+    else if (activeWorkspace === 'defense') left = 340;
+    else if (activeWorkspace === 'twin') left = 340;
+    else if (activeWorkspace === 'ai') left = 370;
+    
+    // Right sidebar or overlay panel width calculations
+    if (selectedNode) {
+      right = 390; // Selective inspector drawer
+    } else {
+      if (activeWorkspace === 'twin') right = 390;
+      else if (activeWorkspace === 'ai') right = 390;
+      else if (activeWorkspace === 'forensics') right = 340; // top-right chronological timeline
+      else if (activeWorkspace === 'defense') right = 340; // top-right containment panel card
+    }
+    
+    return {
+      leftOffset: left > 0 ? left + 24 : 16,
+      rightOffset: right > 0 ? right + 24 : 16
+    };
+  }, [activeWorkspace, selectedNode, isFullscreen]);
+
   const handleSelectNode = (node: NetworkNode | null) => {
     onSelectNode(node);
     if (node) {
@@ -251,6 +349,11 @@ export function SimulationView({
               recommendations={simulationState.defenseRecommendations}
               onApplyAction={simulationActions.applyDefenseRecommendation}
               onDismissAction={simulationActions.dismissDefenseRecommendation}
+              activeStrategyMode={simulationState.defenseStrategyMode}
+              onStrategyChange={simulationActions.setDefenseStrategyMode}
+              containmentStability={simulationState.containmentStability}
+              propagationReductionIndex={simulationState.propagationReductionIndex}
+              recoveryTrackingRating={simulationState.recoveryTrackingRating}
             />
           </motion.div>
         );
@@ -353,6 +456,94 @@ export function SimulationView({
                 SENTINEL<span className="text-accent-cyan">X</span>
               </div>
               <div className="text-[7.5px] font-mono text-text-tertiary tracking-[0.2em] uppercase leading-none">Command Grid v4.1</div>
+            </div>
+          </div>
+
+          <div className="h-4 w-px bg-border-bright/20" />
+
+          {/* Core Clearance Level & Tenant Domain info */}
+          <div className="flex items-center gap-2 font-mono relative">
+            <div 
+              onClick={() => setIsRoleDropdownOpen(!isRoleDropdownOpen)}
+              className="bg-accent-cyan/15 border border-accent-cyan/35 cursor-pointer hover:bg-accent-cyan/25 px-2.5 py-1 rounded text-[8.5px] leading-tight text-accent-cyan font-bold flex items-center gap-1.5 shadow-[0_0_8px_rgba(0,255,209,0.06)] select-none transition-all z-20"
+            >
+              <span className="w-1 h-1 rounded-full bg-accent-cyan animate-pulse" />
+              <span>SEC CLEARANCE: {operatorRole.toUpperCase()}</span>
+              <ChevronDown size={11} className={cn("text-accent-cyan opacity-80 transition-transform", isRoleDropdownOpen ? "rotate-180" : "rotate-0")} />
+            </div>
+
+            <AnimatePresence>
+              {isRoleDropdownOpen && (
+                <>
+                  {/* Backdrop trap */}
+                  <div 
+                    className="fixed inset-0 z-10" 
+                    onClick={() => setIsRoleDropdownOpen(false)}
+                  />
+                  
+                  <motion.div
+                    initial={{ opacity: 0, y: 5, scale: 0.98 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: 5, scale: 0.98 }}
+                    className="absolute top-full left-0 mt-1 w-64 bg-panel/95 border border-accent-cyan/30 rounded shadow-[0_10px_30px_rgba(0,0,0,0.8)] p-1 z-30 backdrop-blur-lg"
+                  >
+                    <div className="px-2 py-1 border-b border-border/20 mb-1 text-[7px] text-text-tertiary tracking-widest font-black uppercase">
+                      SELECT DEPLOYMENT POSTURE (RBAC)
+                    </div>
+                    {[
+                      {
+                        name: 'Administrator',
+                        desc: 'Full command and control authorization root clearance.'
+                      },
+                      {
+                        name: 'Security Analyst',
+                        desc: 'Active monitoring and lateral analysis clearance level.'
+                      },
+                      {
+                        name: 'Incident Commander',
+                        desc: 'Tactical response, escalation, and containment control.'
+                      },
+                      {
+                        name: 'Forensic Investigator',
+                        desc: 'Temporal freeze, telemetry query & raw log inspector.'
+                      }
+                    ].map((role) => (
+                      <button
+                        key={role.name}
+                        onClick={() => {
+                          onEscalateRole?.(role.name);
+                          setIsRoleDropdownOpen(false);
+                        }}
+                        className={cn(
+                          "w-full text-left p-2 rounded flex flex-col gap-0.5 hover:bg-white/5 transition-colors group",
+                          operatorRole === role.name ? "bg-accent-cyan/10 border-l border-accent-cyan" : "border-l border-transparent"
+                        )}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className={cn(
+                            "text-[8.5px] font-bold tracking-wider",
+                            operatorRole === role.name ? "text-accent-cyan" : "text-white group-hover:text-accent-cyan"
+                          )}>
+                            {role.name.toUpperCase()}
+                          </span>
+                          {operatorRole === role.name && (
+                            <span className="text-[7px] px-1 bg-accent-cyan/20 text-accent-cyan rounded border border-accent-cyan/30 font-bold whitespace-nowrap">
+                              ACTIVE
+                            </span>
+                          )}
+                        </div>
+                        <span className="text-[6.5px] font-mono text-text-secondary leading-normal normal-case">
+                          {role.desc}
+                        </span>
+                      </button>
+                    ))}
+                  </motion.div>
+                </>
+              )}
+            </AnimatePresence>
+
+            <div className="bg-white/5 border border-white/10 px-2 py-1 rounded text-[8.5px] leading-tight text-white/70 select-none">
+              TENANT: <span className="text-white font-bold">{activeTenant}</span>
             </div>
           </div>
 
@@ -554,7 +745,7 @@ export function SimulationView({
               transition={{ duration: 0.25, ease: "easeInOut" }}
               className={cn(
                 "absolute left-6 top-6 transition-all duration-300 border border-white/5 bg-[#05070f]/75 backdrop-blur-md flex flex-col overflow-hidden rounded-md shadow-2xl z-25",
-                activeWorkspace === 'forensics' ? "bottom-[245px]" : "bottom-6",
+                activeWorkspace === 'forensics' ? "bottom-[295px]" : "bottom-6",
                 activeWorkspace === 'ai' ? "w-[370px]" : "w-[340px]"
               )}
             >
@@ -705,6 +896,11 @@ export function SimulationView({
                       recommendations={simulationState.defenseRecommendations}
                       onApplyAction={simulationActions.applyDefenseRecommendation}
                       onDismissAction={simulationActions.dismissDefenseRecommendation}
+                      activeStrategyMode={simulationState.defenseStrategyMode}
+                      onStrategyChange={simulationActions.setDefenseStrategyMode}
+                      containmentStability={simulationState.containmentStability}
+                      propagationReductionIndex={simulationState.propagationReductionIndex}
+                      recoveryTrackingRating={simulationState.recoveryTrackingRating}
                     />
                   </div>
                 </>
@@ -725,6 +921,8 @@ export function SimulationView({
                   <div className="flex-1 overflow-y-auto custom-scrollbar p-5">
                     <ControlPanel 
                       nodes={simulationState.nodes}
+                      operatorRole={operatorRole}
+                      onEscalateRole={onEscalateRole}
                       onLaunchAttack={simulationActions.launchAttack}
                       onLaunchScenario={simulationActions.launchScenario}
                       onActivateDefense={simulationActions.activateDefense}
@@ -772,7 +970,7 @@ export function SimulationView({
 
         {/* Central Persistent Battlespace / Graph Core - THE ENVIRONMENT ITSELF */}
         <div className="absolute inset-0 bg-void overflow-hidden flex flex-col font-sans z-0">
-           <div className="absolute inset-0 cyber-grid opacity-20 pointer-events-none" />
+           <div className="absolute inset-0 cyber-grid opacity-[0.12] pointer-events-none" />
            
            {/* Horizontal Metrics Panel (Decluttered Centered HUD Positioning) */}
            <div className="px-6 pt-4 pb-1 z-10 shrink-0 max-w-4xl w-full mx-auto relative">
@@ -897,7 +1095,85 @@ export function SimulationView({
          </div>
 
          {/* Core Map Graphic Container */}
-         <div className="flex-1 min-h-0 relative">
+         <div className="flex-1 min-h-0 relative overflow-hidden">
+           {/* 1. Subtle Matrix Grid Scan Line Overlay */}
+           <div className="absolute inset-0 hidden pointer-events-none z-10 bg-void" />
+
+           {/* 2. Operational Tension Pulse layer */}
+           <div 
+             className={cn(
+               "absolute inset-0 pointer-events-none transition-all duration-1000 z-10 rounded-sm",
+               simulationState.threatLevel === 'critical' ? "shadow-[inset_0_0_120px_rgba(239,68,68,0.22)] bg-red-950/[0.03]" :
+               simulationState.threatLevel === 'high' ? "shadow-[inset_0_0_80px_rgba(245,158,11,0.12)] bg-amber-950/[0.01]" :
+               activeWorkspace === 'forensics' ? "shadow-[inset_0_0_100px_rgba(245,158,11,0.08)] bg-amber-950/[0.02]" : ""
+             )}
+           />
+
+           {/* 3. Elite Tactical Situational HUD Overlay Panel (Operations Only) */}
+           {activeWorkspace === 'operations' && (
+             <div className="absolute top-4 left-4 z-20 pointer-events-none max-w-[280px] flex flex-col gap-2.5">
+               {/* Sector Resilience Panel */}
+               <div className="bg-[#040813]/90 border border-white/5 p-3 rounded shadow-xl pointer-events-auto backdrop-blur-md">
+                 <div className="flex items-center justify-between mb-2 pb-1 border-b border-white/5">
+                   <div className="flex items-center gap-1.5">
+                     <LayoutGrid size={11} className="text-accent-cyan" />
+                     <span className="text-[9.5px] font-black uppercase tracking-wider text-white">INFRASTRUCTURE SECTORS</span>
+                   </div>
+                   <span className="text-[7.5px] font-mono text-[#5A7FA8] uppercase tracking-widest font-bold">COGNITION ON</span>
+                 </div>
+                 
+                 <div className="space-y-2">
+                   {[
+                     { key: 'perimeter', label: 'PERIMETER EDGE GATEWAYS', score: sectorWeights.perimeter },
+                     { key: 'core', label: 'INTERNAL ROUTER FABRIC', score: sectorWeights.core },
+                     { key: 'app', label: 'WORKSTATIONS & APP CORE', score: sectorWeights.app },
+                     { key: 'data', label: 'DATA REPOSITORIES', score: sectorWeights.data },
+                   ].map(sector => (
+                     <div key={sector.key} className="space-y-1">
+                       <div className="flex justify-between items-center text-[8.5px] font-mono">
+                         <span className="text-text-secondary">{sector.label}</span>
+                         <span className={cn("font-bold", sector.score > 80 ? "text-state-safe" : sector.score > 40 ? "text-state-warning" : "text-state-danger")}>
+                           {sector.score}%
+                         </span>
+                       </div>
+                       <div className="h-1 bg-white/5 rounded-full overflow-hidden">
+                         <div 
+                           className={cn("h-full transition-all duration-500", 
+                             sector.score > 80 ? "bg-state-safe" : sector.score > 40 ? "bg-state-warning" : "bg-state-danger"
+                           )}
+                           style={{ width: `${sector.score}%` }}
+                         />
+                       </div>
+                     </div>
+                   ))}
+                 </div>
+               </div>
+
+               {/* Systemic Survivability Predictor */}
+               <div className="bg-[#040813]/90 border border-white/5 p-3 rounded shadow-xl pointer-events-auto backdrop-blur-md font-mono text-[9px] text-text-secondary leading-normal">
+                 <div className="flex items-center gap-2 mb-2">
+                   <ActivityIcon size={11} className="text-accent-cyan animate-pulse" />
+                   <span className="text-[9.5px] font-black text-white uppercase tracking-wider">PREDICTIVE COGNITION</span>
+                 </div>
+                 <div className="space-y-1.5 text-[8.5px]">
+                   <div className="flex justify-between">
+                     <span>STRESS TIPPING FORCE:</span>
+                     <span className={cn("font-extrabold", simulationState.threatLevel === 'critical' ? 'text-state-danger' : 'text-accent-cyan')}>
+                       {simulationState.threatLevel === 'critical' ? 'CRITICAL LIMIT' : '0.41% NOMINAL'}
+                     </span>
+                   </div>
+                   <div className="flex justify-between">
+                     <span>SURVIVABILITY CAP:</span>
+                     <span className="text-white font-extrabold">{survivalTimeFrame}</span>
+                   </div>
+                   <div className="flex justify-between">
+                     <span>PROPAGATION SPEED:</span>
+                     <span className="text-white font-extrabold uppercase">{simulationState.spreadVelocity?.toFixed(2) || '0.00'}/s LATERAL</span>
+                   </div>
+                 </div>
+               </div>
+             </div>
+           )}
            <NetworkGraph 
              nodes={filteredNodes}
              links={simulationState.links}
@@ -909,7 +1185,7 @@ export function SimulationView({
              highlightedNodeId={highlightedNodeId}
              highlightedPaths={criticalPaths}
              visualSettings={visualSettings}
-             isReplay={activeWorkspace === 'forensics' ? true : isHistoricalMode}
+             isReplay={activeWorkspace === 'forensics' ? true : isHistoricalMode} leftOffset={leftOffset} rightOffset={rightOffset} activeWorkspace={activeWorkspace} threatLevel={simulationState.threatLevel}
            />
          </div>
 
@@ -988,15 +1264,43 @@ export function SimulationView({
                initial={{ opacity: 0, y: 30 }}
                animate={{ opacity: 1, y: 0 }}
                exit={{ opacity: 0, y: 30 }}
-               className="absolute top-6 right-6 z-10 bg-rose-950/45 border border-rose-500/40 p-4 rounded-sm backdrop-blur shadow-2xl flex flex-col gap-1 max-w-[340px]"
+               className="absolute top-6 right-6 z-10 bg-[#0e0406]/95 border border-amber-500/30 p-4 rounded backdrop-blur-md shadow-2xl flex flex-col gap-2.5 max-w-[340px] pointer-events-auto"
              >
-               <div className="flex items-center gap-2">
-                 <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse" />
-                 <span className="text-[10px] font-black text-rose-300 tracking-widest uppercase">TEMPORAL PLAYBACK ACTIVE</span>
+               <div className="flex items-center justify-between pb-1 text-[8.5px] font-mono border-b border-amber-500/10">
+                 <div className="flex items-center gap-2">
+                   <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+                   <span className="text-[10px] font-black text-amber-300 tracking-widest uppercase">TEMPORAL RECONSTRUCTION</span>
+                 </div>
+                 <span className="text-[7.5px] bg-amber-500/10 border border-amber-500/20 text-amber-500 rounded px-1.5 py-0.5 select-none font-bold">HISTORIC_FLOW</span>
                </div>
-               <p className="text-[9px] text-text-secondary leading-normal">
-                 System is locked in forensic workload reconstruction mode. Telemetry changes represent historic logs rather than real-time drift.
+               <p className="text-[9.5px] text-text-secondary leading-relaxed">
+                 System is operating in forensic workload reconstruction mode. Telemetry changes represent historic logs mapping precise compromise pathways.
                </p>
+
+               {/* Tactical incident sequence map */}
+               <div className="space-y-1.5 pt-1.5 border-t border-white/5 font-mono text-[8.5px]">
+                 <span className="text-[7.5px] text-amber-400 font-semibold uppercase tracking-wider">CHRONOLOGICAL CAMPAIGN FLOW:</span>
+                 {compromiseSequences.length === 0 ? (
+                   <div className="text-text-tertiary text-[7.5px] italic">Awaiting historic event stream correlation...</div>
+                 ) : (
+                   <div className="space-y-1.5 max-h-[140px] overflow-y-auto custom-scrollbar">
+                     {compromiseSequences.map((ev, idx) => (
+                       <div key={idx} className="flex gap-2 items-start bg-white/[0.01] hover:bg-white/[0.03] p-1.5 border border-white/5 rounded-xs transition-colors">
+                         <span className="text-amber-500 font-extrabold mt-0.5">●</span>
+                         <div className="flex-1 min-w-0">
+                           <div className="flex justify-between font-semibold text-white text-[8px]">
+                             <span className="truncate max-w-[125px]">{ev.nodeId || ev.origin || 'SYSTEM'}</span>
+                             <span className="text-[7.5px] text-text-tertiary font-normal text-right font-mono">
+                               {ev.timestamp instanceof Date ? ev.timestamp.toLocaleTimeString() : String(ev.timestamp)}
+                             </span>
+                           </div>
+                           <p className="text-text-secondary text-[8px] leading-snug line-clamp-2 mt-0.5">{ev.message}</p>
+                         </div>
+                       </div>
+                     ))}
+                   </div>
+                 )}
+               </div>
              </motion.div>
            )}
 
@@ -1034,7 +1338,7 @@ export function SimulationView({
          {/* Forensic Timeline Controls (ONLY when forensic mode is selected!) */}
          <AnimatePresence>
            {activeWorkspace === 'forensics' && (
-             <AttackTimeline />
+             <AttackTimeline simulationState={simulationState} />
            )}
          </AnimatePresence>
 
@@ -1079,7 +1383,7 @@ export function SimulationView({
             transition={{ duration: 0.25 }}
             className={cn(
               "absolute right-6 top-6 transition-all duration-300 border border-white/5 bg-[#05070f]/75 backdrop-blur-md z-25 shadow-2xl flex flex-col overflow-hidden rounded-md",
-              activeWorkspace === 'forensics' ? "bottom-[245px]" : "bottom-6",
+              activeWorkspace === 'forensics' ? "bottom-[295px]" : "bottom-6",
               "w-[390px]"
             )}
           >

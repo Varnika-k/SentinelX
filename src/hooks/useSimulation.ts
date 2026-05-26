@@ -287,6 +287,10 @@ export function useSimulation(telemetryState: SimulationState) {
       simulationSpeed: 3000,
       spreadVelocity: 1.0,
       activeDefenseModules: ['firewall'] as DefenseModule[],
+      defenseStrategyMode: 'balanced' as const,
+      containmentStability: 96,
+      propagationReductionIndex: 45,
+      recoveryTrackingRating: 88,
     };
     
     telemetryBus.publish(TelemetryTopic.UI_ACTION, {
@@ -305,6 +309,26 @@ export function useSimulation(telemetryState: SimulationState) {
       severity: 'low'
     });
   }, [emitTelemetry]);
+
+  const setDefenseStrategyMode = useCallback((mode: 'balanced' | 'aggressive' | 'forensics' | 'resilience') => {
+    const defaultStability = mode === 'aggressive' ? 98 : mode === 'resilience' ? 92 : mode === 'forensics' ? 24 : 96;
+    const defaultReduction = mode === 'aggressive' ? 82 : mode === 'resilience' ? 58 : mode === 'forensics' ? 8 : 45;
+    const defaultRecovery = mode === 'resilience' ? 94 : mode === 'aggressive' ? 25 : mode === 'forensics' ? 40 : 78;
+
+    telemetryBus.publish(TelemetryTopic.DEFENSE_UPDATE, {
+      source: 'operator',
+      defenseStrategyMode: mode,
+      containmentStability: defaultStability,
+      propagationReductionIndex: defaultReduction,
+      recoveryTrackingRating: defaultRecovery
+    });
+
+    telemetryBus.publish(TelemetryTopic.SYSTEM_LOG, {
+      source: 'operator',
+      message: `STRATEGY OVERRIDE: Active counter-defense protocol set to [${mode.toUpperCase()}]`,
+      severity: 'high'
+    });
+  }, []);
 
   const setSimulationSpeed = useCallback((speed: number) => {
     telemetryBus.publish(TelemetryTopic.UI_ACTION, {
@@ -388,6 +412,7 @@ export function useSimulation(telemetryState: SimulationState) {
     applyDefenseRecommendation,
     dismissDefenseRecommendation,
     setSpreadVelocity,
+    setDefenseStrategyMode,
     toggleSimulation
   };
 }

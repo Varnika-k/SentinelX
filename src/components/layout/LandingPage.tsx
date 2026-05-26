@@ -13,11 +13,15 @@ import { ThreatBanner } from '../features/ThreatBanner';
 export interface LandingPageProps {
   onEnterSimulation: () => void;
   onOpenManual: () => void;
+  operatorRole?: string;
+  activeTenant?: string;
 }
 
 export function LandingPage({ 
   onEnterSimulation,
-  onOpenManual
+  onOpenManual,
+  operatorRole = 'Administrator',
+  activeTenant = 'CORE_INTEL_US_EAST'
 }: LandingPageProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const heroCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -90,10 +94,18 @@ export function LandingPage({
     <div ref={containerRef} className="bg-void text-text-primary font-body select-none">
       {/* 1. Fixed Nav */}
       <nav className="fixed top-0 left-0 right-0 z-[100] h-20 border-b border-border bg-void/80 backdrop-blur-xl flex items-center justify-between px-10">
-        <div className="flex items-center gap-2">
-          <Shield className="w-5 h-5 text-accent-cyan" />
-          <div className="font-display font-black text-[14px] tracking-[4px] text-white uppercase">
-            SENTINEL <span className="text-accent-cyan">//</span> X
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2">
+            <Shield className="w-5 h-5 text-accent-cyan animate-pulse" />
+            <div className="font-display font-black text-[14px] tracking-[4px] text-white uppercase">
+              SENTINEL <span className="text-accent-cyan">//</span> X
+            </div>
+          </div>
+          
+          <div className="hidden sm:flex items-center gap-2 bg-white/5 border border-white/10 px-2.5 py-1 rounded text-[8.5px] font-mono leading-none">
+            <span className="text-accent-cyan font-bold">{operatorRole.toUpperCase()}</span>
+            <span className="text-text-tertiary">@</span>
+            <span className="text-white font-bold">{activeTenant.replace(/_/g, ' ')}</span>
           </div>
         </div>
         

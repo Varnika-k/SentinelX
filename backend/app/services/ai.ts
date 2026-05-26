@@ -7,6 +7,7 @@ import { digitalTwinEngine } from '../simulation/twin-engine';
 
 class AIService {
   private orchestrator: AIOrchestrator;
+  private responseCache: Map<string, { response: any; timestamp: number }> = new Map();
 
   constructor() {
     this.orchestrator = new AIOrchestrator();
@@ -29,7 +30,43 @@ class AIService {
       data.context.replaySessionId = digitalTwinEngine.sessionId;
       data.context.simulationScenario = digitalTwinEngine.scenario;
     }
-    return await this.orchestrator.analyze(data);
+
+    // Determine cache key based on request shape to prevent duplicate Gemini reasoning
+    let cacheKey = '';
+    if (data && data.type === 'threat' && data.context?.targetNode) {
+      const node = data.context.targetNode;
+      cacheKey = `threat-${node.id}-${node.status}-${node.threatScore || 0}-${node.lastAttackType || ''}`;
+    } else {
+      cacheKey = JSON.stringify(data).substring(0, 300);
+    }
+
+    const now = Date.now();
+    if (this.responseCache.has(cacheKey)) {
+      const val = this.responseCache.get(cacheKey)!;
+      if (now - val.timestamp < 15000) { // Cache AI summaries for 15 seconds
+        logger.info(`[AIService] Deduction Hit! Serving cached reasoning response for key: ${cacheKey}`);
+        return val.response;
+      }
+    }
+
+    // Protect Gemini API key rate limits under high automation loops
+    const lastRequestTime = Array.from(this.responseCache.values())
+      .map(v => v.timestamp)
+      .reduce((max, t) => Math.max(max, t), 0);
+    
+    if (now - lastRequestTime < 1000) {
+      logger.info('[AIService] Throttling rapid sequential AI analysis to avoid rate exhaustion');
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    }
+
+    try {
+      const response = await this.orchestrator.analyze(data);
+      this.responseCache.set(cacheKey, { response, timestamp: Date.now() });
+      return response;
+    } catch (err) {
+      logger.error('Error during AI analysis inference call', err);
+      throw err;
+    }
   }
 
   public async analyzeInfra(topology: any, events: any) {

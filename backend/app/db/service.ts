@@ -182,13 +182,24 @@ export class DatabaseService {
     });
   }
 
-  static async getEventsInRange(start: Date, end: Date) {
-    return await this.telemetryRepo.find({
-      where: {
-        timestamp: Between(start, end)
-      },
-      order: { timestamp: 'ASC' }
-    });
+  static async getEventsInRange(start: Date, end: Date, limit = 100) {
+    try {
+      let actualStart = start;
+      const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+      if (actualStart.getTime() < oneHourAgo.getTime()) {
+        actualStart = oneHourAgo;
+      }
+      return await this.telemetryRepo.find({
+        where: {
+          timestamp: Between(actualStart, end)
+        },
+        order: { timestamp: 'ASC' },
+        take: limit
+      });
+    } catch (err) {
+      logger.error('Failed to get events in range from database', err);
+      return [];
+    }
   }
 
   static async createIncident(data: Partial<IncidentEntity>) {

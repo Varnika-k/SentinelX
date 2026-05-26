@@ -1,17 +1,19 @@
 import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Terminal, Zap, X, Trash2, Database, ShieldCheck, Activity } from 'lucide-react';
+import { Terminal, Zap, X, Trash2, Database, ShieldCheck, Activity, Link, History } from 'lucide-react';
 import { telemetryBus } from '../../telemetry/bus';
 import { TelemetryEnvelope, TelemetryTopic } from '../../telemetry/schemas';
 import { ingestionManager } from '../../telemetry/ingestion-manager';
 import { cn } from '../../lib/utils';
 import { TelemetryProcessorMetrics } from '../../telemetry/enterprise-schemas';
+import { ReplayEngine } from '../../telemetry/replay';
 
 export function TelemetryDiagnostics() {
   const [isOpen, setIsOpen] = useState(false);
   const [events, setEvents] = useState<TelemetryEnvelope[]>([]);
   const [filter, setFilter] = useState<string>('');
   const [metrics, setMetrics] = useState<TelemetryProcessorMetrics>(ingestionManager.getMetrics());
+  const [isHistorical, setIsHistorical] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -25,6 +27,7 @@ export function TelemetryDiagnostics() {
 
     const metricsInterval = setInterval(() => {
       setMetrics(ingestionManager.getMetrics());
+      setIsHistorical(ReplayEngine.isHistoricalMode());
     }, 1000);
 
     return () => {
@@ -52,7 +55,7 @@ export function TelemetryDiagnostics() {
         <motion.div 
           initial={{ opacity: 0, scale: 0.9, y: 20 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
-          className="bg-void/95 border border-border rounded-sm shadow-2xl flex flex-col h-[500px] backdrop-blur-md overflow-hidden font-sans"
+          className="bg-void/95 border border-border rounded-sm shadow-2xl flex flex-col h-[520px] backdrop-blur-md overflow-hidden font-sans"
         >
           {/* Header */}
           <div className="flex items-center justify-between p-3 border-b border-border bg-void/50">
@@ -68,7 +71,7 @@ export function TelemetryDiagnostics() {
             </button>
           </div>
 
-          {/* Enterprise Ingestion Metrics */}
+          {/* Core Telemetry and Infrastructure Observability Metrics Grid */}
           <div className="grid grid-cols-4 gap-px bg-border border-b border-border">
             <div className="p-3 bg-void/80 flex flex-col gap-1">
                <span className="text-[7px] font-bold text-text-tertiary uppercase tracking-widest">Connectors</span>
@@ -92,11 +95,32 @@ export function TelemetryDiagnostics() {
                </div>
             </div>
             <div className="p-3 bg-void/80 flex flex-col gap-1">
-               <span className="text-[7px] font-bold text-text-tertiary uppercase tracking-widest">Health</span>
-               <div className="flex items-center gap-1.5 text-state-success">
-                 <div className="w-1.5 h-1.5 rounded-full bg-state-success animate-pulse-precision" />
-                 <span className="text-[10px] font-mono font-bold leading-none">100%</span>
+               <span className="text-[7px] font-bold text-text-tertiary uppercase tracking-widest">State Mode</span>
+               <div className="flex items-center gap-1.5">
+                 {isHistorical ? (
+                   <div className="flex items-center gap-1 text-amber-500">
+                     <History size={10} />
+                     <span className="text-[8px] font-bold leading-none select-none uppercase">REPLAY</span>
+                   </div>
+                 ) : (
+                   <div className="flex items-center gap-1 text-emerald-400">
+                     <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse-precision" />
+                     <span className="text-[8px] font-bold leading-none select-none uppercase">LIVE</span>
+                   </div>
+                 )}
                </div>
+            </div>
+          </div>
+
+          {/* Secondary Diagnostic Sub-Bar */}
+          <div className="flex items-center justify-between border-b border-border bg-void/60 px-3 py-1 text-[8px] font-mono font-medium text-text-tertiary">
+            <div className="flex items-center gap-1.5">
+              <span className="text-emerald-500/90 font-semibold">• WS_CONN: ACTIVE</span>
+              <span>|</span>
+              <span>BATCHING: ENGAGED</span>
+            </div>
+            <div className="flex items-center gap-1 text-[8px]">
+              <span>CULLING: ACTIVE</span>
             </div>
           </div>
 

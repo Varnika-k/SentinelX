@@ -8,6 +8,8 @@ import { useState, useEffect } from 'react';
 export function ControlPanel({ 
   nodes,
   identities = [],
+  operatorRole = 'Administrator',
+  onEscalateRole,
   onLaunchAttack, 
   onLaunchScenario,
   onActivateDefense, 
@@ -31,6 +33,8 @@ export function ControlPanel({
 }: { 
   nodes: NetworkNode[],
   identities?: EnterpriseIdentity[],
+  operatorRole?: string,
+  onEscalateRole?: (role: string) => void,
   onLaunchAttack: (type: AttackType, targetId?: string, intensity?: number, identityId?: string) => void,
   onLaunchScenario: (scenario: ScenarioType) => void,
   onActivateDefense: () => void,
@@ -63,6 +67,16 @@ export function ControlPanel({
   const [lastToggled, setLastToggled] = useState<string | null>(null);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [activeActions, setActiveActions] = useState<Record<string, boolean>>({});
+
+  const [isEscalating, setIsEscalating] = useState(false);
+  const isRestrictedRole = operatorRole === 'Security Analyst' || operatorRole === 'Forensic Investigator';
+
+  const handleRequestElevate = async () => {
+    setIsEscalating(true);
+    await new Promise(r => setTimeout(r, 1200));
+    onEscalateRole?.('Administrator');
+    setIsEscalating(false);
+  };
 
   // Environmental Tune - Live update
   useEffect(() => {
@@ -198,36 +212,56 @@ export function ControlPanel({
              />
           </div>
 
-          <button
-            onClick={() => {
-              if (selectedAttack) {
-                onLaunchAttack(selectedAttack, targetNodeId || undefined, intensity, targetIdentityId || undefined);
-                triggerActionFeedback('strike');
-              }
-            }}
-            disabled={!selectedAttack}
-            className={cn(
-              "w-full h-14 font-bold text-[13px] tracking-[0.2em] transition-all flex flex-col items-center justify-center group relative overflow-hidden uppercase",
-              selectedAttack 
-                ? "bg-state-danger text-void font-inter font-black shadow-lg shadow-state-danger/10 active:scale-[0.99] hover:bg-state-danger/90" 
-                : "bg-faint/30 text-text-tertiary cursor-not-allowed border border-border"
-            )}
-            style={selectedAttack ? { clipPath: 'polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px)' } : {}}
-          >
-            {activeActions['strike'] && (
-              <motion.div 
-                initial={{ opacity: 0, scale: 0.8 }}
-                animate={{ opacity: [0.5, 0], scale: [1, 2] }}
-                transition={{ duration: 0.6 }}
-                className="absolute inset-0 bg-white pointer-events-none z-20"
-              />
-            )}
-            <div className="flex items-center gap-3 relative z-10">
-              <Zap size={16} fill="currentColor" />
-              <span>{targetIdentityId ? `Compromise Identity [${targetIdentityId}]` : selectedNodeId ? `Execute_Strike [${selectedNodeId}]` : 'Authorize_Strike'}</span>
-            </div>
-            <div className="text-[8px] font-mono opacity-60 tracking-[0.3em] mt-0.5">Quantum_Sign_Validated</div>
-          </button>
+           {isRestrictedRole ? (
+             <div className="bg-state-warning/10 border border-state-warning/30 p-3.5 rounded-sm text-[10px] space-y-3 font-mono">
+               <div className="flex gap-2 items-center text-state-warning font-extrabold uppercase tracking-wider">
+                 <AlertTriangle size={13} className="text-state-warning animate-pulse" />
+                 <span>RESTRICTED TOPOLOGY WRITE BOUNDARY</span>
+               </div>
+               <p className="text-[9px] text-text-secondary leading-normal uppercase">
+                 Clearance status [{operatorRole.toUpperCase()}] restricts simulation triggers. Access control (RBAC) overrides active.
+               </p>
+               <button
+                 type="button"
+                 onClick={handleRequestElevate}
+                 disabled={isEscalating}
+                 className="w-full text-center py-2.5 bg-state-warning text-void font-extrabold rounded-sm text-[9.5px] uppercase tracking-widest transition-all hover:bg-white hover:text-void cursor-pointer block"
+               >
+                 {isEscalating ? 'AUTHENTICATING OVERRIDE KEY...' : 'DEPLOY ONE-CLICK ELEVATION'}
+               </button>
+             </div>
+           ) : (
+             <button
+               onClick={() => {
+                 if (selectedAttack) {
+                   onLaunchAttack(selectedAttack, targetNodeId || undefined, intensity, targetIdentityId || undefined);
+                   triggerActionFeedback('strike');
+                 }
+               }}
+               disabled={!selectedAttack}
+               className={cn(
+                 "w-full h-14 font-bold text-[13px] tracking-[0.2em] transition-all flex flex-col items-center justify-center group relative overflow-hidden uppercase cursor-pointer",
+                 selectedAttack 
+                   ? "bg-state-danger text-void font-inter font-black shadow-lg shadow-state-danger/10 active:scale-[0.99] hover:bg-state-danger/90" 
+                   : "bg-faint/30 text-text-tertiary cursor-not-allowed border border-border"
+               )}
+               style={selectedAttack ? { clipPath: 'polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px)' } : {}}
+             >
+               {activeActions['strike'] && (
+                 <motion.div 
+                   initial={{ opacity: 0, scale: 0.8 }}
+                   animate={{ opacity: [0.5, 0], scale: [1, 2] }}
+                   transition={{ duration: 0.6 }}
+                   className="absolute inset-0 bg-white pointer-events-none z-20"
+                 />
+               )}
+               <div className="flex items-center gap-3 relative z-10">
+                 <Zap size={16} fill="currentColor" />
+                 <span>{targetIdentityId ? `Compromise Identity [${targetIdentityId}]` : selectedNodeId ? `Execute_Strike [${selectedNodeId}]` : 'Authorize_Strike'}</span>
+               </div>
+               <div className="text-[8px] font-mono opacity-60 tracking-[0.3em] mt-0.5">Quantum_Sign_Validated</div>
+             </button>
+           )}
         </section>
 
         {/* Section 2: Deflection Protocols */}

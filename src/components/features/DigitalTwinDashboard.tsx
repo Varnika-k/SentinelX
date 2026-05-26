@@ -139,7 +139,7 @@ export function DigitalTwinDashboard({ onHighlightNode }: DigitalTwinDashboardPr
     }
   };
 
-  const handleNodeAction = async (nodeName: string, action: 'isolate' | 'scale' | 'chaos' | 'rotate' | 'block') => {
+  const handleNodeAction = async (nodeName: string, action: 'isolate' | 'scale' | 'chaos' | 'rotate' | 'block' | 'rollback') => {
     try {
       const res = await fetch('/api/v1/simulation/node/action', {
         method: 'POST',
@@ -443,8 +443,14 @@ export function DigitalTwinDashboard({ onHighlightNode }: DigitalTwinDashboardPr
               <span className="text-[7.5px] uppercase font-mono tracking-widest text-center animate-pulse">Establishing Twin Connection Traces...</span>
             </div>
           ) : (
-            nodes.map((node) => {
-              const isExpanded = expandedNodeId === node.id;
+            [...nodes]
+              .sort((a, b) => {
+                const weightA = (a.status === 'infected' ? 10000 : 0) + (a.status === 'critical' ? 5000 : 0) + (a.riskScore * 10) + ((a.operationalCriticality ?? 0.5) * 1000);
+                const weightB = (b.status === 'infected' ? 10000 : 0) + (b.status === 'critical' ? 5000 : 0) + (b.riskScore * 10) + ((b.operationalCriticality ?? 0.5) * 1000);
+                return weightB - weightA;
+              })
+              .map((node) => {
+                const isExpanded = expandedNodeId === node.id;
               // Map twin node name to primary D3 graph node ID
               const linkedGraphId = TWIN_NODE_MAP[node.name];
               
@@ -704,13 +710,21 @@ export function DigitalTwinDashboard({ onHighlightNode }: DigitalTwinDashboardPr
                           {/* Micro Actions Panel inside expansion */}
                           <div className="pt-2.5 border-t border-white/5 flex flex-col gap-1.5">
                             <div className="flex gap-1.5">
-                              <button
-                                disabled={isIso}
-                                onClick={() => handleNodeAction(node.name, 'isolate')}
-                                className="flex-1 py-1 text-[7.5px] font-bold bg-accent-blue/15 hover:bg-accent-blue/35 text-accent-cyan border border-accent-blue/25 rounded cursor-pointer disabled:opacity-40 font-mono transition-colors uppercase"
-                              >
-                                Isolate
-                              </button>
+                              {isIso ? (
+                                <button
+                                  onClick={() => handleNodeAction(node.name, 'rollback')}
+                                  className="flex-1 py-1 text-[7.5px] font-bold bg-emerald-500/20 hover:bg-emerald-500/35 text-emerald-300 border border-emerald-500/25 rounded cursor-pointer font-mono transition-colors uppercase animate-pulse"
+                                >
+                                  Unisolate Network
+                                </button>
+                              ) : (
+                                <button
+                                  onClick={() => handleNodeAction(node.name, 'isolate')}
+                                  className="flex-1 py-1 text-[7.5px] font-bold bg-accent-blue/15 hover:bg-accent-blue/35 text-accent-cyan border border-accent-blue/25 rounded cursor-pointer font-mono transition-colors uppercase"
+                                >
+                                  Isolate Workload
+                                </button>
+                              )}
                               <button
                                 disabled={isIso}
                                 onClick={() => handleNodeAction(node.name, 'scale')}
@@ -848,6 +862,19 @@ export function DigitalTwinDashboard({ onHighlightNode }: DigitalTwinDashboardPr
                       </span>
                     </div>
                     <p className="text-text-tertiary mt-1 leading-relaxed">{step.description}</p>
+                    {step.mitre && (
+                      <div className="flex gap-2.5 mt-2 flex-wrap text-[6px] font-mono leading-none">
+                        <span className="bg-red-500/10 text-red-400 border border-red-500/30 px-1.5 py-0.5 rounded-sm uppercase font-bold tracking-tight">
+                          Tactic: {step.mitre.tactic}
+                        </span>
+                        <span className="bg-amber-500/10 text-amber-400 border border-amber-500/30 px-1.5 py-0.5 rounded-sm uppercase font-bold tracking-tight">
+                          Id: {step.mitre.id}
+                        </span>
+                        <span className="bg-white/5 text-text-secondary border border-white/10 px-1.5 py-0.5 rounded-sm uppercase tracking-tight max-w-[200px] truncate">
+                          {step.mitre.technique}
+                        </span>
+                      </div>
+                    )}
                   </div>
                 </div>
               ))

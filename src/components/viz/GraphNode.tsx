@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Server, Shield, Globe, Database, User, ShieldAlert, ShieldCheck, ShieldOff } from 'lucide-react';
 import { cn } from '../../lib/utils';
@@ -24,6 +24,7 @@ interface GraphNodeProps {
   showSegmentation?: boolean;
   visualSettings?: VisualSettings;
   hideLabel?: boolean;
+  activeWorkspace?: string;
 }
 
 export const GraphNode = React.memo(({ 
@@ -41,13 +42,24 @@ export const GraphNode = React.memo(({
     heatmapOpacity: 0.15,
     pulseFrequency: 1
   },
-  hideLabel = false
+  hideLabel = false,
+  activeWorkspace = 'operations'
 }: GraphNodeProps) => {
+  const [isHovered, setIsHovered] = useState(false);
   const Icon = TYPE_ICONS[node.type as keyof typeof TYPE_ICONS] || Server;
   const isCompromised = node.status === 'compromised';
   const isIsolated = node.status === 'isolated';
   const isQuarantined = node.status === 'quarantined';
   const isDegraded = node.status === 'degraded';
+
+  // Sizing Hierarchy (Objective 5)
+  const nodeScale = useMemo(() => {
+    if (node.type === 'database' || node.type === 'hr-system') return 1.35; // DB & Sensitive Vaults are prominent
+    if (node.type === 'gateway') return 1.30;                             // Border gateways are strategically distinct
+    if (node.type === 'firewall') return 1.15;                            // Firewalls are distinct
+    if (node.type === 'workstation') return 0.90;                         // Lower tier endpoints are small
+    return 1.05;                                                          // Servers are standard
+  }, [node.type]);
 
   const attackColors = {
     ransomware: 'stroke-[#FF0055]',
@@ -60,20 +72,19 @@ export const GraphNode = React.memo(({
 
   const attackColor = node.lastAttackType ? attackColors[node.lastAttackType as keyof typeof attackColors] : 'stroke-state-danger';
 
-  // State Styles Mapper
+  // State Styles Mapper - Restrained, Elite, and Unified
   const getStrokeClass = () => {
     if (isCompromised) return attackColor;
     if (isIsolated) return "stroke-state-iso text-state-iso";
     if (isQuarantined) return "stroke-amber-500 text-amber-500";
     if (isDegraded) return "stroke-rose-400 text-rose-400 stroke-dasharray-[2_2]";
-    if (isHighlighted) return "stroke-state-warning shadow-[0_0_15px_rgba(245,158,11,0.5)]";
+    if (isHighlighted) return "stroke-state-warning";
     return "stroke-border-bright text-accent-cyan";
   };
 
   // Get segmentation segment definitions
   const isDmz = node.type === 'gateway' || node.type === 'firewall';
   const isDatabaseVault = node.type === 'database' || node.type === 'hr-system';
-  const isInternalServer = node.type === 'server' || node.type === 'workstation';
 
   const getSegmentationColor = () => {
     if (isDmz) return "stroke-accent-blue/35 text-accent-blue";
@@ -82,10 +93,14 @@ export const GraphNode = React.memo(({
   };
 
   const getSegmentationLabel = () => {
-    if (isDmz) return "DMZ_SEG_ALPHA";
-    if (isDatabaseVault) return "SECURE_DATA_BOUND";
-    return "INTERNAL_CORP_LAN";
+    if (isDmz) return "DMZ_ALPHA";
+    if (isDatabaseVault) return "DB_VAULT_SECURE";
+    return "LAN_ZONE";
   };
+
+  const radiusOuter = 14 * nodeScale;
+  const radiusInner1 = 11 * nodeScale;
+  const radiusInner2 = 9 * nodeScale;
 
   return (
     <g 
@@ -94,38 +109,44 @@ export const GraphNode = React.memo(({
         e.stopPropagation();
         onNodeClick(node);
       }}
-      onMouseEnter={() => onMouseEnter(node)}
-      onMouseLeave={onMouseLeave}
+      onMouseEnter={() => {
+        setIsHovered(true);
+        onMouseEnter(node);
+      }}
+      onMouseLeave={() => {
+        setIsHovered(false);
+        onMouseLeave();
+      }}
       className="node-group cursor-pointer"
     >
       {/* Threat Aura (Background Glow) */}
       {(node.threatScore > 0 || isDegraded || isQuarantined) && (
         <motion.circle
-          r={(15 + (node.threatScore / 100) * 20) * visualSettings.intensity}
+          r={(15 + (node.threatScore / 100) * 15) * nodeScale * visualSettings.intensity}
           animate={{
-            opacity: [0.1, 0.3 * ((node.threatScore || 40) / 100) * visualSettings.glow, 0.1],
-            scale: [1, 1.1, 1],
+            opacity: [0.04, 0.10 * ((node.threatScore || 40) / 100) * visualSettings.glow, 0.04],
+            scale: [1, 1.03, 1],
           }}
           transition={{
-            duration: (3 - ((node.threatScore || 40) / 100) * 2) / visualSettings.speed,
+            duration: (5 - ((node.threatScore || 40) / 100) * 2.5) / visualSettings.speed,
             repeat: Infinity,
             ease: "easeInOut"
           }}
           className={cn(
             "pointer-events-none blur-md",
-            node.threatScore > 70 ? "fill-state-danger" : 
-            isQuarantined ? "fill-amber-500/20" :
-            isDegraded ? "fill-rose-400/20" :
-            node.threatScore > 40 ? "fill-state-warning" : "fill-accent-cyan"
+            node.threatScore > 75 ? "fill-state-danger/70" : 
+            isQuarantined ? "fill-amber-500/15" :
+            isDegraded ? "fill-rose-400/15" :
+            node.threatScore > 40 ? "fill-state-warning/60" : "fill-accent-cyan/15"
           )}
         />
       )}
 
       {/* Latency and Pressure Overlays */}
       {node.latency && node.latency > 10 && (
-        <g transform="translate(0, -22)" className="pointer-events-none">
-          <rect x="-16" y="-6" width="32" height="10" rx="1.5" className="fill-void/90 stroke-border/50 stroke-[0.5px]" />
-          <text textAnchor="middle" className="fill-rose-400/90 font-mono text-[6.5px] font-bold tracking-tight">
+        <g transform={`translate(0, -${radiusOuter + 10})`} className="pointer-events-none">
+          <rect x="-16" y="-6" width="32" height="10" rx="1" className="fill-void/90 stroke-border/40 stroke-[0.5px]" />
+          <text textAnchor="middle" y="1" className="fill-rose-400/90 font-mono text-[6px] font-bold tracking-tight">
             {node.latency}ms
           </text>
         </g>
@@ -134,17 +155,17 @@ export const GraphNode = React.memo(({
       {/* Degradation Arc (visual pressure indicator around node) */}
       {node.degradation && node.degradation > 0 && (
         <circle
-          r={18}
-          className="fill-none stroke-rose-400/30 stroke-[1.5px] pointer-events-none"
-          strokeDasharray="112"
-          strokeDashoffset={112 - (112 * node.degradation) / 100}
+          r={radiusOuter + 4}
+          className="fill-none stroke-rose-500/20 stroke-[1.5px] pointer-events-none"
+          strokeDasharray="150"
+          strokeDashoffset={150 - (150 * node.degradation) / 100}
         />
       )}
 
       {/* Operational Segmentation Boundary Halos */}
       {showSegmentation && (
         <circle
-          r={21}
+          r={radiusOuter + 6}
           className={cn("fill-none stroke-[1px] stroke-dasharray-[2_2] pointer-events-none", getSegmentationColor())}
         />
       )}
@@ -153,9 +174,9 @@ export const GraphNode = React.memo(({
       <AnimatePresence>
         {(isIsolated || isQuarantined) && (
           <motion.circle
-            initial={{ r: 12, opacity: 0 }}
-            animate={{ r: [12, 28, 12], opacity: [0, 0.4, 0] }}
-            transition={{ duration: 3, repeat: Infinity, ease: "easeOut" }}
+            initial={{ r: radiusOuter, opacity: 0 }}
+            animate={{ r: [radiusOuter, radiusOuter + 14, radiusOuter], opacity: [0, 0.35, 0] }}
+            transition={{ duration: 4, repeat: Infinity, ease: "easeOut" }}
             className={cn(
               "fill-none stroke-[1px] pointer-events-none",
               isQuarantined ? "stroke-amber-500" : "stroke-accent-cyan"
@@ -166,23 +187,88 @@ export const GraphNode = React.memo(({
 
       {/* Highlight Glow */}
       <AnimatePresence>
-        {isHighlighted && (
+        {(isHighlighted || isHovered) && (
           <motion.circle
-            initial={{ r: 12, opacity: 0 }}
-            animate={{ r: 24, opacity: 0.3 }}
+            initial={{ r: radiusOuter, opacity: 0 }}
+            animate={{ r: radiusOuter + 8, opacity: 0.15 }}
             exit={{ opacity: 0 }}
             className="fill-state-warning mix-blend-screen pointer-events-none"
           />
         )}
       </AnimatePresence>
 
-      {/* Label and Segment Markers */}
-      {!hideLabel && (
-        <g transform={`translate(0, 32)`}>
+      {/* Active Defense / Forensics Tactical Boundaries (Objective 7) */}
+      {activeWorkspace === 'defense' && (isIsolated || isQuarantined || isCompromised) && (
+        <g>
+          <motion.circle
+            r={radiusOuter + 8}
+            className={cn(
+              "fill-none stroke-[1.2px] pointer-events-none stroke-dasharray-[4_3]",
+              isCompromised ? "stroke-state-danger/60" : isQuarantined ? "stroke-amber-500/60" : "stroke-state-iso/60"
+            )}
+            animate={{ rotate: 360 }}
+            transition={{ duration: 12, repeat: Infinity, ease: "linear" }}
+          />
+          <text
+            textAnchor="middle"
+            y={-radiusOuter - 15}
+            stroke="#06090e"
+            strokeWidth="2"
+            className="font-mono text-[5px] font-black tracking-widest pointer-events-none fill-none"
+          >
+            {isCompromised ? "THREAT_BLOCK_ZONE" : "SHIELD_CONTAINED"}
+          </text>
+          <text
+            textAnchor="middle"
+            y={-radiusOuter - 15}
+            className={cn(
+              "font-mono text-[5px] font-black tracking-widest pointer-events-none",
+              isCompromised ? "fill-rose-400" : isQuarantined ? "fill-amber-400" : "fill-accent-cyan"
+            )}
+          >
+            {isCompromised ? "THREAT_BLOCK_ZONE" : "SHIELD_CONTAINED"}
+          </text>
+        </g>
+      )}
+
+      {activeWorkspace === 'forensics' && (
+        <g>
+          <text
+            textAnchor="middle"
+            y={-radiusOuter - 15}
+            stroke="#06090e"
+            strokeWidth="2"
+            className="font-mono text-[5px] font-extrabold fill-none tracking-widest pointer-events-none"
+          >
+            STATE:TEMPORAL_LOCK
+          </text>
+          <text
+            textAnchor="middle"
+            y={-radiusOuter - 15}
+            className="font-mono text-[5px] font-extrabold fill-amber-500/70 tracking-widest pointer-events-none"
+          >
+            STATE:TEMPORAL_LOCK
+          </text>
+        </g>
+      )}
+
+       {/* Label and Segment Markers (Objective 4: Offset, backdrop, collide-safe) */}
+      {(!hideLabel || isHovered || isSelected || isCompromised) && (
+        <g transform={`translate(0, ${radiusOuter + 14})`} className="pointer-events-none select-none">
+           {/* High contrast Cartographic text background outline */}
+           <text
+             textAnchor="middle"
+             stroke="#020408"
+             strokeWidth="4"
+             strokeLinejoin="round"
+             className="text-[8px] font-semibold tracking-[0.15em] font-mono select-none uppercase fill-none"
+           >
+             {node.label}
+           </text>
            <text
              textAnchor="middle"
              className={cn(
-               "text-[9px] font-bold tracking-[0.2em] uppercase select-none transition-colors",
+               "text-[8px] font-mono font-semibold tracking-[0.15em] uppercase select-none transition-all duration-300",
                isCompromised ? "fill-state-danger" : isSelected ? "fill-accent-cyan" : "fill-text-secondary"
              )}
            >
@@ -191,8 +277,8 @@ export const GraphNode = React.memo(({
            {showSegmentation && (
              <text
                textAnchor="middle"
-               y="10"
-               className={cn("text-[6px] font-mono font-bold tracking-[0.1em] pointer-events-none select-none", getSegmentationColor())}
+               y="8"
+               className={cn("text-[5.5px] font-mono font-bold tracking-[0.08em] pointer-events-none", getSegmentationColor())}
              >
                {getSegmentationLabel()}
              </text>
@@ -200,9 +286,9 @@ export const GraphNode = React.memo(({
            {isSelected && (
              <motion.rect
                layoutId="node-underline"
-               x="-15"
-               y="12"
-               width="30"
+               x="-12"
+               y="11"
+               width="24"
                height="1.5"
                className="fill-accent-cyan"
              />
@@ -210,76 +296,76 @@ export const GraphNode = React.memo(({
         </g>
       )}
 
-      {/* Node Framing (Precision Corners) */}
+      {/* Node Framing (Precision Corners/Crosshairs) */}
       <AnimatePresence>
         {(isSelected || isCompromised) && (
           <motion.g
-            initial={{ opacity: 0, scale: 0.8 }}
+            initial={{ opacity: 0, scale: 0.85 }}
             animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.8 }}
+            exit={{ opacity: 0, scale: 0.85 }}
           >
-            <path d="M-16 -16 L-10 -16 M-16 -16 L-16 -10" className="stroke-accent-cyan/50 stroke-[1px] fill-none" />
-            <path d="M16 -16 L10 -16 M16 -16 L16 -10" className="stroke-accent-cyan/50 stroke-[1px] fill-none" />
-            <path d="M-16 16 L-10 16 M-16 16 L-16 10" className="stroke-accent-cyan/50 stroke-[1px] fill-none" />
-            <path d="M16 16 L10 16 M16 16 L16 10" className="stroke-accent-cyan/50 stroke-[1px] fill-none" />
+            <path d={`M-${radiusOuter + 2} -${radiusOuter + 2} L-${radiusOuter - 3} -${radiusOuter + 2} M-${radiusOuter + 2} -${radiusOuter + 2} L-${radiusOuter + 2} -${radiusOuter - 3}`} className="stroke-accent-cyan/60 stroke-[1px] fill-none" />
+            <path d={`M${radiusOuter + 2} -${radiusOuter + 2} L${radiusOuter - 3} -${radiusOuter + 2} M${radiusOuter + 2} -${radiusOuter + 2} L${radiusOuter + 2} -${radiusOuter - 3}`} className="stroke-accent-cyan/60 stroke-[1px] fill-none" />
+            <path d={`M-${radiusOuter + 2} ${radiusOuter + 2} L-${radiusOuter - 3} ${radiusOuter + 2} M-${radiusOuter + 2} ${radiusOuter + 2} L-${radiusOuter + 2} ${radiusOuter - 3}`} className="stroke-accent-cyan/60 stroke-[1px] fill-none" />
+            <path d={`M${radiusOuter + 2} ${radiusOuter + 2} L${radiusOuter - 3} ${radiusOuter + 2} M${radiusOuter + 2} ${radiusOuter + 2} L${radiusOuter + 2} ${radiusOuter - 3}`} className="stroke-accent-cyan/60 stroke-[1px] fill-none" />
           </motion.g>
         )}
       </AnimatePresence>
 
       {/* Outer Ring */}
       <motion.circle
-        r={14}
+        r={radiusOuter}
         animate={{
-          strokeOpacity: isCompromised ? [0.3, 0.8, 0.3] : (isSelected || isHighlighted) ? 1 : 0.1
+          strokeOpacity: isCompromised ? [0.4, 0.9, 0.4] : (isSelected || isHighlighted || isHovered) ? 1 : 0.25
         }}
-        transition={{ duration: 2, repeat: Infinity }}
+        transition={{ duration: 2.2, repeat: Infinity, ease: 'easeInOut' }}
         className={cn(
-          "fill-void stroke-[1px] transition-colors duration-500",
+          "fill-void stroke-[1.5px] transition-colors duration-500",
           getStrokeClass()
         )}
       />
 
-      {/* Hexagonal Inner Frame (Optional visual touch) */}
-      <circle r={11} className="fill-void stroke-white/5 stroke-[1px]" />
-      <circle r={9} className="fill-void stroke-white/10 stroke-[1px]" />
+      {/* Hexagonal Inner Frames */}
+      <circle r={radiusInner1} className="fill-void stroke-white/5 stroke-[1px]" />
+      <circle r={radiusInner2} className="fill-void stroke-white/10 stroke-[1px]" />
 
       {/* Selection pulses */}
       <AnimatePresence>
         {isSelected && (
           <motion.circle
-            initial={{ r: 14, opacity: 1 }}
-            animate={{ r: 32, opacity: 0 }}
+            initial={{ r: radiusOuter, opacity: 1 }}
+            animate={{ r: radiusOuter + 14, opacity: 0 }}
             exit={{ opacity: 0 }}
-            transition={{ duration: 1.5, repeat: Infinity, ease: "easeOut" }}
+            transition={{ duration: 2, repeat: Infinity, ease: "easeOut" }}
             className="fill-none stroke-accent-cyan stroke-[0.5px] pointer-events-none"
           />
         )}
       </AnimatePresence>
 
-      {/* Icon Wrapper */}
+      {/* Icon Wrapper matching responsive scaling size */}
       <g className={cn(
-        "transition-all duration-500",
-        isSelected ? "scale-110" : "scale-100"
+        "transition-all duration-300",
+        (isSelected || isHovered) ? "scale-105" : "scale-100"
       )}>
-        <foreignObject x="-7" y="-7" width="14" height="14" className="pointer-events-none">
+        <foreignObject x="-6" y="-6" width="12" height="12" className="pointer-events-none select-none">
           <div className={cn(
             "w-full h-full flex items-center justify-center transition-colors duration-500",
             isCompromised ? "text-state-danger" : 
             isIsolated ? "text-state-iso" : 
             isQuarantined ? "text-amber-500" :
             isDegraded ? "text-rose-400" :
-            isSelected ? "text-accent-cyan" : "text-white/40"
+            (isSelected || isHovered) ? "text-accent-cyan" : "text-white/35"
           )}>
-            <Icon size={10} strokeWidth={isSelected ? 3 : 2} />
+            <Icon size={9} strokeWidth={(isSelected || isHovered) ? 2.5 : 2} />
           </div>
         </foreignObject>
       </g>
 
-      {/* Small Data Markers (Clockwise position) */}
-      {isSelected && (
+      {/* Micro Status Indicators (Data Trapping Nodes) */}
+      {(isSelected || isHovered) && (
         <g className="pointer-events-none">
-           <circle cx="14" cy="0" r="1.5" className="fill-accent-cyan animate-pulse-precision" />
-           <circle cx="-14" cy="0" r="1.5" className="fill-accent-cyan animate-pulse-precision delay-75" />
+           <circle cx={radiusOuter} cy="0" r="1.2" className="fill-accent-cyan" />
+           <circle cx={-radiusOuter} cy="0" r="1.2" className="fill-accent-cyan" />
         </g>
       )}
     </g>
@@ -292,6 +378,7 @@ export const GraphNode = React.memo(({
     prev.node.y === next.node.y &&
     prev.isSelected === next.isSelected &&
     prev.isHighlighted === next.isHighlighted &&
-    prev.showSegmentation === next.showSegmentation
+    prev.showSegmentation === next.showSegmentation &&
+    prev.hideLabel === next.hideLabel
   );
 });

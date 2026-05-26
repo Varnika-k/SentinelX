@@ -12,6 +12,9 @@ class TelemetryClient {
   private maxRetries: number = 10;
   private currentRetries: number = 0;
   private url: string;
+  private lastReceivedTimestamp: string | null = null;
+  private processedIds: Set<string> = new Set();
+  private sendQueue: string[] = [];
 
   constructor() {
     // Determine WS URL based on current environment
@@ -36,11 +39,32 @@ class TelemetryClient {
         message: 'REAL_TIME_STREAM: Connection active.',
         severity: 'low'
       });
+
+      // Reconnect Synchronization Recovery: ask backend for missing event deltas
+      if (this.lastReceivedTimestamp && this.ws && this.ws.readyState === WebSocket.OPEN) {
+        console.log(`[TelemetryClient] Reconnection detected. Triggering sync since: ${this.lastReceivedTimestamp}`);
+        this.ws.send(JSON.stringify({
+          action: 'sync',
+          since: this.lastReceivedTimestamp
+        }));
+      }
+
+      // Flush buffered messages queued during outage
+      while (this.sendQueue.length > 0 && this.ws && this.ws.readyState === WebSocket.OPEN) {
+        const msg = this.sendQueue.shift();
+        if (msg) this.ws.send(msg);
+      }
     };
 
     this.ws.onmessage = (event) => {
       try {
         const envelope: TelemetryEnvelope = JSON.parse(event.data);
+        const envAny = envelope as any;
+        if (envAny.timestamp) {
+          this.lastReceivedTimestamp = envAny.timestamp;
+        } else {
+          this.lastReceivedTimestamp = new Date().toISOString();
+        }
         this.processEvent(envelope);
       } catch (err) {
         console.error('[TelemetryClient] Failed to parse telemetry frame:', err);
@@ -72,10 +96,32 @@ class TelemetryClient {
   }
 
   private processEvent(envelope: TelemetryEnvelope) {
-    // Normalization Layer
-    // We Map backend topics to our internal TelemetryTopic enum if they differ
-    // For now, they are aligned.
+    // Deduplicate high-frequency events or double sync triggers
+    const envAny = envelope as any;
+    const evId = envAny.payload?.id || `${envelope.topic}-${envAny.timestamp || ''}-${JSON.stringify(envelope.payload).length}`;
+    if (this.processedIds.has(evId)) {
+      return; // Suppress duplicate triggers
+    }
+    this.processedIds.add(evId);
+    if (this.processedIds.size > 1000) {
+      const first = this.processedIds.values().next().value;
+      if (first !== undefined) this.processedIds.delete(first);
+    }
+
     telemetryBus.publish(envelope.topic, envelope.payload);
+  }
+
+  send(message: any) {
+    const raw = typeof message === 'string' ? message : JSON.stringify(message);
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      this.ws.send(raw);
+    } else {
+      console.warn('[TelemetryClient] Connection offline. Queueing message for transmission...');
+      this.sendQueue.push(raw);
+      if (this.sendQueue.length > 100) {
+        this.sendQueue.shift(); // Safeguard memory limits by pruning oldest
+      }
+    }
   }
 
   disconnect() {

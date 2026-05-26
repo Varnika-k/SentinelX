@@ -6,6 +6,8 @@ import { ReplaySessionEntity } from './entities/ReplaySession';
 import { AIReportEntity } from './entities/AIReport';
 import { InfrastructureNodeEntity } from './entities/InfrastructureNode';
 import { SimulationSessionEntity } from './entities/SimulationSession';
+import { UnifiedOperationalEventEntity } from './entities/UnifiedOperationalEventEntity';
+import { GraphSnapshotEntity } from './entities/GraphSnapshotEntity';
 import { logger } from '../core/logger';
 
 const isProd = process.env.NODE_ENV === 'production';
@@ -33,7 +35,9 @@ const postgresConfig = (process.env.DATABASE_URL && !isPlaceholderDb)
         ReplaySessionEntity,
         AIReportEntity,
         InfrastructureNodeEntity,
-        SimulationSessionEntity
+        SimulationSessionEntity,
+        UnifiedOperationalEventEntity,
+        GraphSnapshotEntity
       ],
       migrations: [],
       subscribers: [],
@@ -54,7 +58,9 @@ export let AppDataSource = postgresConfig
         ReplaySessionEntity,
         AIReportEntity,
         InfrastructureNodeEntity,
-        SimulationSessionEntity
+        SimulationSessionEntity,
+        UnifiedOperationalEventEntity,
+        GraphSnapshotEntity
       ],
       migrations: [],
       subscribers: [],

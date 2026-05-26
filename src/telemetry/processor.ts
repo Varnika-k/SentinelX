@@ -106,6 +106,18 @@ export class TelemetryProcessor {
         if (payload.spreadVelocity !== undefined) {
           newState.spreadVelocity = payload.spreadVelocity;
         }
+        if (payload.defenseStrategyMode) {
+          newState.defenseStrategyMode = payload.defenseStrategyMode;
+        }
+        if (payload.containmentStability !== undefined) {
+          newState.containmentStability = payload.containmentStability;
+        }
+        if (payload.propagationReductionIndex !== undefined) {
+          newState.propagationReductionIndex = payload.propagationReductionIndex;
+        }
+        if (payload.recoveryTrackingRating !== undefined) {
+          newState.recoveryTrackingRating = payload.recoveryTrackingRating;
+        }
         break;
 
       case TelemetryTopic.INCIDENT_REPORT:
@@ -408,6 +420,7 @@ export class TelemetryProcessor {
 
     const incidents = incidentManager.processEvent(newEvent, updatedNodes, updatedLinks);
     const metrics = TelemetryService.calculateMetrics(updatedNodes);
+    const defenseRecommendations = defenseEngine.analyze(updatedNodes, updatedLinks, incidents);
 
     return {
       ...state,
@@ -419,7 +432,8 @@ export class TelemetryProcessor {
       events: [newEvent, ...state.events].slice(0, 100),
       incidents,
       threatLevel: metrics.threatLevel,
-      metrics
+      metrics,
+      defenseRecommendations
     };
   }
 

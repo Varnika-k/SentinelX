@@ -60,6 +60,34 @@ export class ReplayEngine {
     }
   }
 
+  static getHistory(): TelemetryEnvelope[] {
+    return [...this.history];
+  }
+
+  /**
+   * Appends a live event from the telemetry stream and computes its checkpoint snapshot automatically.
+   */
+  static appendLiveEnvelope(envelope: TelemetryEnvelope, state: SimulationState) {
+    if (envelope.payload?._isReplay) return;
+    
+    const exists = this.history.some(h => 
+      h === envelope || 
+      (h.payload?.eventId && envelope.payload?.eventId && h.payload.eventId === envelope.payload.eventId)
+    );
+    
+    if (!exists) {
+      this.history.push(envelope);
+      const idx = this.history.length - 1;
+      
+      // Keep indices aligned and checkpoint periodic snapshots safely
+      const isCheckpoint = idx === 0 || idx % 2 === 0; // Capture more frequent checkpoints for lightning-fast seeks
+      if (isCheckpoint) {
+        this.snapshots.set(idx, JSON.parse(JSON.stringify(state)));
+      }
+      this.broadcastStatus();
+    }
+  }
+
   /**
    * Safe checkpoint handler associating precise snapshots with their envelopes.
    */
@@ -72,8 +100,8 @@ export class ReplayEngine {
     );
     
     if (idx !== -1) {
-      // Checkpoint alignment (for instance: first, multiple of 5, or final state)
-      const isCheckpoint = idx === 0 || idx % 5 === 0;
+      // Checkpoint alignment (for instance: first, multiple of 2, or final state)
+      const isCheckpoint = idx === 0 || idx % 2 === 0;
       if (isCheckpoint) {
         this.snapshots.set(idx, JSON.parse(JSON.stringify(state)));
       }

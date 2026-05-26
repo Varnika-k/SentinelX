@@ -169,14 +169,49 @@ export class DigitalTwinEngine {
   private tick() {
     this.tickCount++;
 
-    // 1. Random noise / basic metrics dynamics on healthy nodes
+    // 1. Authentic Telemetry Atmosphere: Diurnal Heartbeats & Wave Cycles (Objective F)
+    const diurnalIndex = 1.0 + 0.25 * Math.sin(this.tickCount * 0.15); // legimate business hours load cycle
+    
     this.nodes.forEach(node => {
       if (node.status === 'healthy') {
-        node.cpuLoad = Math.max(5, Math.min(60, node.cpuLoad + (Math.random() * 8 - 4)));
-        node.latency = Math.max(2, Math.min(200, node.latency + (Math.random() * 10 - 5)));
-        node.activeConnections = Math.max(0, Math.min(500, node.activeConnections + Math.floor(Math.random() * 10 - 5)));
+        const uniqueIdMultiplier = Number(node.id) || 1;
+        const heartbeatCpu = 3.0 * Math.sin(this.tickCount * 0.5 + uniqueIdMultiplier); // organic fluctuation
+        
+        let baselineConnections = 15;
+        let baselineCpu = 15;
+        let baselineLatency = 10;
+        
+        if (node.type === 'K8S_SERVICE') {
+          baselineConnections = 120;
+          baselineCpu = 12;
+          baselineLatency = 5;
+        } else if (node.type === 'K8S_POD') {
+          baselineConnections = 45;
+          baselineCpu = 18;
+          baselineLatency = 12;
+        } else if (node.type === 'CLOUD_EC2') {
+          baselineConnections = 10;
+          baselineCpu = 25;
+          baselineLatency = 35;
+        } else if (node.type === 'CLOUD_LAMBDA') {
+          baselineConnections = 0;
+          baselineCpu = 0;
+          baselineLatency = 180;
+        } else if (node.type === 'CLOUD_S3') {
+          baselineConnections = 25;
+          baselineCpu = 4;
+          baselineLatency = 8;
+        }
+        
+        const noiseFactor = Math.random() * 4 - 2;
+        node.activeConnections = Math.max(0, Math.round(baselineConnections * diurnalIndex + (Math.random() * 8 - 4)));
+        node.cpuLoad = Math.max(3, Math.min(90, Math.round(baselineCpu * diurnalIndex + heartbeatCpu + noiseFactor)));
+        node.latency = Math.max(1, Math.min(450, Math.round(baselineLatency + (Math.random() * 4 - 2))));
       }
     });
+
+    // 1.5 Process Security Tradeoffs & Outage Cascades (Objective D)
+    this.runOperationalTradeoffs();
 
     // 2. Scenario-specific state evolution
     switch (this.scenario) {
@@ -269,6 +304,58 @@ export class DigitalTwinEngine {
     // Save DB state every few ticks to save performance
     if (this.tickCount % 3 === 0) {
       this.persistState();
+    }
+  }
+
+  /**
+   * Models the real-world operational tradeoffs of defensive protocols.
+   * E.g. traffic scrubbing overhead, credential rotation TLS handshakes,
+   * and cascading ingress connection dropoff if key gateways are isolated (Objective D).
+   */
+  private runOperationalTradeoffs() {
+    const ingress = this.nodes.get('k8s-svc-ingress-nginx');
+    const authPod = this.nodes.get('k8s-pod-auth-api-559b');
+    const payGw = this.nodes.get('k8s-pod-payment-gw-88c2');
+    const db = this.nodes.get('db-core-master');
+
+    this.nodes.forEach(node => {
+      // 1. Traffic Blocking Consequence: deep-packet scanning overhead
+      if (this.mitigationsRun.includes(`block:${node.name}`)) {
+        node.latency = Math.max(1, node.latency + Math.round(50 + Math.random() * 20)); // latency cost (+50-70ms)
+        node.cpuLoad = Math.min(100, node.cpuLoad + Math.round(15 + Math.random() * 5)); // WAF inspector cycle burden
+        node.activeConnections = Math.max(0, Math.round(node.activeConnections * 0.70)); // filtering legitimate traffic restricts throughput
+      }
+
+      // 2. Secret Rotation Consequence: TLS authentication re-verification queue
+      if (this.mitigationsRun.includes(`rotate:${node.name}`)) {
+        node.cpuLoad = Math.min(100, node.cpuLoad + Math.round(20 + Math.random() * 10)); // crypt key lookup workload
+        node.latency = Math.max(1, node.latency + Math.round(90 + Math.random() * 40)); // queued handshake latency delay
+      }
+    });
+
+    // 3. Cascading Outage/Degradation Consequence (Dependency Cascades)
+    // Core Gateway (nginx) Isolation triggers global connection starvation
+    if (ingress && ingress.status === 'isolated') {
+      this.nodes.forEach(node => {
+        if (node.name !== 'k8s-svc-ingress-nginx' && node.status !== 'isolated') {
+          node.activeConnections = Math.max(0, Math.round(node.activeConnections * 0.04)); // connections drop 96%
+          node.cpuLoad = Math.max(1, Math.round(node.cpuLoad * 0.15)); // idle CPU
+        }
+      });
+    }
+
+    // Core Database Isolation triggers auth proxy / payment gw timeout loop
+    if (db && db.status === 'isolated') {
+      if (authPod && authPod.status !== 'isolated') {
+        authPod.status = 'warning';
+        authPod.latency = Math.max(authPod.latency, 3400); // 3.4 seconds DB retry wait
+        authPod.cpuLoad = Math.min(100, authPod.cpuLoad + 35); // constant thread retry looping load
+      }
+      if (payGw && payGw.status !== 'isolated') {
+        payGw.status = 'warning';
+        payGw.latency = Math.max(payGw.latency, 4100); // 4.1 seconds timeout
+        payGw.cpuLoad = Math.min(100, payGw.cpuLoad + 40);
+      }
     }
   }
 
@@ -756,6 +843,53 @@ export class DigitalTwinEngine {
   /**
    * Military-grade After-Action Review (AAR) timeline logger (Objective J)
    */
+  /**
+   * Helper to resolve precise MITRE ATT&CK techniques, tactics and IDs for incident evolution (Objective C)
+   */
+  private getMitreDetailsForTick(scenario: string, tick: number): { tactic: string; technique: string; id: string } | null {
+    if (scenario === 'ransomware') {
+      if (tick === 1) return { tactic: 'Initial Access', id: 'T1190', technique: 'Exploit Public-Facing Application' };
+      if (tick === 3) return { tactic: 'Credential Access', id: 'T1078', technique: 'Valid Accounts: Multi-Platform Hijacking' };
+      if (tick === 5) return { tactic: 'Privilege Escalation', id: 'T1068', technique: 'Remote Exploitation for Privilege Escalation' };
+      if (tick === 7) return { tactic: 'Impact', id: 'T1486', technique: 'Data Encrypted for Impact: Cryptographic Subsystem Lockout' };
+    } else if (scenario === 'ddos') {
+      if (tick === 1) return { tactic: 'Impact', id: 'T1498.001', technique: 'Direct Network Denial of Service Flood' };
+      if (tick === 3) return { tactic: 'Impact', id: 'T1499.004', technique: 'Application Exhaustion Threat' };
+      if (tick >= 5) return { tactic: 'Impact', id: 'T1489', technique: 'Service Stop: Orchestrated Socket Starvation' };
+    } else if (scenario === 'insider') {
+      if (tick === 1) return { tactic: 'Initial Access', id: 'T1078.001', technique: 'Valid Accounts: Rogue Administrator Session' };
+      if (tick === 3) return { tactic: 'Collection', id: 'T1114', technique: 'Database Table Dumps & Local Buffer Assembly' };
+      if (tick === 5) return { tactic: 'Exfiltration', id: 'T1567', technique: 'Exfiltration Over Web Service: Rogue S3 Bucket Exposure' };
+    } else if (scenario === 'k8s_escalation') {
+      if (tick === 1) return { tactic: 'Execution', id: 'T1609', technique: 'Container Administration Command Execution' };
+      if (tick === 3) return { tactic: 'Credential Access', id: 'T1552.006', technique: 'Steal Cluster Tokens' };
+      if (tick === 5) return { tactic: 'Privilege Escalation', id: 'T1548', technique: 'Abuse Elevation Control Mechanism: K8s Role-Binding Abuse' };
+    } else if (scenario === 'lateral_movement') {
+      if (tick === 1) return { tactic: 'Initial Access', id: 'T1110', technique: 'Brute Force: Gateway stuffing' };
+      if (tick === 3) return { tactic: 'Lateral Movement', id: 'T1021.002', technique: 'Remote Services: SMB/Windows Server Admin Shares' };
+    } else if (scenario === 'credential') {
+      if (tick === 1) return { tactic: 'Credential Access', id: 'T1556', technique: 'Modify Active Directory Validation Chain' };
+      if (tick === 3) return { tactic: 'Lateral Movement', id: 'T1078.004', technique: 'Cloud API Valid Account Re-use' };
+    } else if (scenario === 'container_escape') {
+      if (tick === 1) return { tactic: 'Execution', id: 'T1203', technique: 'Container Space Remote Shell Execution' };
+      if (tick === 3) return { tactic: 'Privilege Escalation', id: 'T1611', technique: 'Escape to Host Operating System' };
+    } else if (scenario === 'cloud_privesc') {
+      if (tick === 1) return { tactic: 'Credential Access', id: 'T1528', technique: 'Steal Application IAM Access Token' };
+      if (tick === 3) return { tactic: 'Privilege Escalation', id: 'T1098', technique: 'Account Manipulation: Cloud Policy Attach' };
+    } else if (scenario === 'ai_adaptive') {
+      if (tick === 1) return { tactic: 'Defense Evasion', id: 'T1562', technique: 'Impair Edge Firewall Pattern Detection' };
+      if (tick === 3) return { tactic: 'Lateral Movement', id: 'T1105', technique: 'Ingress Adaptive Payload Delivery' };
+      if (tick === 5) return { tactic: 'Impact', id: 'T1565', technique: 'Data Manipulation: Direct SQL Injection Decryption' };
+    } else if (scenario === 'infra_failure') {
+      if (tick === 1) return { tactic: 'Operational Degradation', id: 'T0833', technique: 'Thread Pool Saturation and Resource Limit Exhaustion' };
+      if (tick === 3) return { tactic: 'Service Outage', id: 'T1489', technique: 'Distributed Failover Engine Lockup' };
+    }
+    return null;
+  }
+
+  /**
+   * Military-grade After-Action Review (AAR) timeline logger (Objective J)
+   */
   private updateAarTimeline() {
     let title = `T+${this.tickCount} Snapshot`;
     let description = '';
@@ -783,6 +917,8 @@ export class DigitalTwinEngine {
       stepType = 'system';
     }
 
+    const mitre = this.getMitreDetailsForTick(this.scenario, this.tickCount);
+
     // Store AAR review entry
     this.aarTimeline.push({
       id: uuidv4(),
@@ -795,7 +931,8 @@ export class DigitalTwinEngine {
       survivability: this.getSurvivabilityScore(),
       continuity: this.getOperationalContinuity(),
       infectedCount,
-      isolatedCount
+      isolatedCount,
+      mitre: mitre || undefined
     });
   }
 
@@ -839,7 +976,21 @@ export class DigitalTwinEngine {
       }
     });
 
-    const percent = (operationalUnits / (this.nodes.size || 1)) * 100;
+    let percent = (operationalUnits / (this.nodes.size || 1)) * 100;
+    
+    // Dependency cascades (Objective D)
+    const ingress = this.nodes.get('k8s-svc-ingress-nginx');
+    const db = this.nodes.get('db-core-master');
+    const authPod = this.nodes.get('k8s-pod-auth-api-559b');
+
+    if (ingress && ingress.status === 'isolated') {
+      percent = percent * 0.05; // Lockout at gateway means near 0% client-facing continuity
+    } else if (db && db.status === 'isolated') {
+      percent = percent * 0.55; // Database offline drops transaction fulfillment by 45%
+    } else if (authPod && authPod.status === 'isolated') {
+      percent = percent * 0.80; // Authentication offline drops availability by 20%
+    }
+
     return Math.max(0, Math.min(100, Math.round(percent)));
   }
 
@@ -966,6 +1117,44 @@ export class DigitalTwinEngine {
       );
 
       logger.info(`Isolating dynamic mock node: ${nodeName}`);
+    }
+  }
+
+  /**
+   * Rollback Action: Unisolate a previously isolated node to restore connectivity.
+   */
+  public unisolateSimulatedNode(nodeName: string) {
+    const node = this.nodes.get(nodeName);
+    if (node && node.status === 'isolated') {
+      node.status = 'healthy';
+      node.riskScore = 15;
+      node.cpuLoad = 10;
+      node.latency = 12;
+      
+      // Filter out isolation mitigations
+      this.mitigationsRun = this.mitigationsRun.filter(m => m !== `isolation:${nodeName}`);
+      this.aarTimeline.push({
+        id: uuidv4(),
+        timestamp: new Date().toISOString(),
+        tick: this.tickCount,
+        title: `Rollback: Unisolated ${nodeName}`,
+        type: 'mitigation',
+        description: `Operator revoked physical port isolation on ${nodeName}. Full network mesh routing restored.`,
+        threatLevel: this.threatLevel,
+        survivability: this.getSurvivabilityScore(),
+        continuity: this.getOperationalContinuity(),
+        infectedCount: Array.from(this.nodes.values()).filter(n => n.status === 'infected').length,
+        isolatedCount: Array.from(this.nodes.values()).filter(n => n.status === 'isolated').length
+      });
+
+      this.emitSimulationTelemetry(
+        TelemetryEventType.DEFENSE_TRIGGERED,
+        'low',
+        nodeName,
+        `Autonomous Defense Response: Isolation rule revoked. All network routes re-activated.`
+      );
+
+      logger.info(`Unisolating dynamic mock node: ${nodeName}`);
     }
   }
 

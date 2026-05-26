@@ -47,6 +47,7 @@ export class TelemetryPipeline {
   private static instance: TelemetryPipeline;
   private replaySequenceCounter = 0;
   private currentSessionId: string = uuidv4();
+  private lastAlertCache: Map<string, { timestamp: number; score: number }> = new Map();
 
   private constructor() {}
 
@@ -156,22 +157,51 @@ export class TelemetryPipeline {
    * Central processor for canonicalizing and executing state propagation 
    */
   private async processCanonicalFlow(partialEvent: Partial<CanonicalTelemetryEvent>): Promise<CanonicalTelemetryEvent> {
+    const targetNode = partialEvent.targetNode || 'pc-admin-hq';
+    const source = partialEvent.source || 'SIMULATED_DIGITAL_TWIN';
+    const severity = partialEvent.severity || 'low';
+    const cacheKey = `${targetNode}-${source}-${severity}`;
+    const now = Date.now();
+
+    if (this.lastAlertCache.has(cacheKey)) {
+      const prev = this.lastAlertCache.get(cacheKey)!;
+      if (now - prev.timestamp < 3000) { // 3 seconds window
+        logger.info(`[Pipeline] Correlation throttle: suppressing identical raw alarm for key ${cacheKey}`);
+        // Return blank mocked event or partial event to bypass heavy execution pipelines
+        return {
+          eventId: partialEvent.eventId || uuidv4(),
+          timestamp: partialEvent.timestamp || new Date().toISOString(),
+          source,
+          sourceType: partialEvent.sourceType || 'endpoint',
+          targetNode,
+          eventCategory: partialEvent.eventCategory || 'endpoint',
+          severity,
+          threatScore: partialEvent.threatScore || 10,
+          correlationId: partialEvent.correlationId || `corr-throttled-${uuidv4().substring(0,8)}`,
+          replaySequence: this.replaySequenceCounter,
+          infrastructureContext: { nodeId: targetNode },
+          mutationPayload: {}
+        };
+      }
+    }
+    this.lastAlertCache.set(cacheKey, { timestamp: now, score: partialEvent.threatScore || 10 });
+
     this.replaySequenceCounter++;
     
     // Compile basic event structure
     const event: CanonicalTelemetryEvent = {
       eventId: partialEvent.eventId || uuidv4(),
       timestamp: partialEvent.timestamp || new Date().toISOString(),
-      source: partialEvent.source || 'SIMULATED_DIGITAL_TWIN',
+      source,
       sourceType: partialEvent.sourceType || 'endpoint',
-      targetNode: partialEvent.targetNode || 'pc-admin-hq',
+      targetNode,
       eventCategory: partialEvent.eventCategory || 'endpoint',
-      severity: partialEvent.severity || 'low',
+      severity,
       threatScore: partialEvent.threatScore || 10,
       correlationId: partialEvent.correlationId || `corr-gen-${uuidv4().substring(0, 8)}`,
       replaySequence: this.replaySequenceCounter,
       infrastructureContext: {
-        nodeId: partialEvent.targetNode || 'pc-admin-hq',
+        nodeId: targetNode,
         ...partialEvent.infrastructureContext
       },
       mutationPayload: partialEvent.mutationPayload || {}

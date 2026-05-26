@@ -33,6 +33,10 @@ export function useTelemetryStore() {
     simulationSpeed: 3000,
     spreadVelocity: 1.0,
     activeDefenseModules: ['firewall'],
+    defenseStrategyMode: 'balanced',
+    containmentStability: 96,
+    propagationReductionIndex: 45,
+    recoveryTrackingRating: 88,
   });
 
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('disconnected');
@@ -59,11 +63,11 @@ export function useTelemetryStore() {
         } else {
           nextState = TelemetryProcessor.process(nextState, envelope);
 
-          // If recordable live event, cache state snapshot to stabilize seek requests
+          // If recordable live event, append to central history and cache state snapshot
           if (envelope.topic !== TelemetryTopic.METRIC_TICK && 
               envelope.topic !== TelemetryTopic.UI_ACTION && 
               !envelope.payload?._isReplay) {
-            ReplayEngine.recordSnapshotForEnvelope(envelope, nextState);
+            ReplayEngine.appendLiveEnvelope(envelope, nextState);
           }
         }
       }
@@ -89,6 +93,14 @@ export function useTelemetryStore() {
 
     // Subscribe to ALL topics and queue them
     const unsubAll = telemetryBus.subscribe('*', (env) => {
+      // Replay Safety Guard: Ignore live real-time streams when browsing historical timelines
+      if (ReplayEngine.isHistoricalMode()) {
+        const isReplayFrame = (env.payload as any)?._isReplay || env.topic === TelemetryTopic.UI_ACTION;
+        if (!isReplayFrame) {
+          return; // Skip live telemetry during historical playback to prevent sequence corruption
+        }
+      }
+
       eventQueue.current.push(env);
       
       // Special handling for connection status which we want reactive outside the simulation state

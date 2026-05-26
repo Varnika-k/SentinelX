@@ -30,6 +30,8 @@ export default function App() {
   const [view, setView] = useState<'booting' | 'landing' | 'simulation'>('booting');
   const [showManual, setShowManual] = useState(false);
   const [showDiagnostics, setShowDiagnostics] = useState(true);
+  const [operatorRole, setOperatorRole] = useState<string>('Administrator');
+  const [activeTenant, setActiveTenant] = useState<string>('CORE_INTEL_US_EAST');
   
   // The Telemetry Store (Listens to Bus - Source of Truth for UI)
   const { state: telemetryState, isOnline } = useTelemetryStore();
@@ -52,6 +54,7 @@ export default function App() {
     applyDefenseRecommendation,
     dismissDefenseRecommendation,
     setSpreadVelocity,
+    setDefenseStrategyMode,
     toggleSimulation
   } = useSimulation(telemetryState);
 
@@ -63,7 +66,15 @@ export default function App() {
   const activeState = view === 'simulation' ? telemetryState : simState;
 
   if (view === 'booting') {
-    return <LoginTerminal onComplete={() => setView('landing')} />;
+    return (
+      <LoginTerminal 
+        onComplete={(role, tenant) => {
+          setOperatorRole(role);
+          setActiveTenant(tenant);
+          setView('landing');
+        }} 
+      />
+    );
   }
 
   return (
@@ -73,11 +84,16 @@ export default function App() {
           <LandingPage 
             onEnterSimulation={() => setView('simulation')}
             onOpenManual={() => setShowManual(true)}
+            operatorRole={operatorRole}
+            activeTenant={activeTenant}
           />
         ) : (
           <SimulationView 
             simulationState={activeState}
             isOnline={isOnline}
+            operatorRole={operatorRole}
+            activeTenant={activeTenant}
+            onEscalateRole={setOperatorRole}
             simulationActions={{
               launchAttack,
               launchScenario,
@@ -94,6 +110,7 @@ export default function App() {
               applyDefenseRecommendation,
               dismissDefenseRecommendation,
               setSpreadVelocity,
+              setDefenseStrategyMode,
               toggleSimulation
             }}
             selectedNode={selectedNode}
@@ -121,8 +138,7 @@ export default function App() {
 
         {/* Global Cinematic Accents */}
         <div className="fixed inset-0 pointer-events-none z-0">
-          <div className="absolute top-0 left-0 w-full h-px bg-gradient-to-r from-transparent via-accent-cyan/30 to-transparent animate-scanline" />
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_100%,rgba(0,255,209,0.02)_0%,transparent_70%)]" />
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_100%,rgba(0,255,209,0.015)_0%,transparent_60%)]" />
         </div>
       </div>
     </TelemetryErrorBoundary>

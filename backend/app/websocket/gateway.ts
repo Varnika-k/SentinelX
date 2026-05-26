@@ -3,6 +3,7 @@ import { Server } from 'http';
 import { logger } from '../core/logger';
 import { TelemetryEnvelope, TelemetryEvent } from '../schemas/telemetry';
 import { eventBus } from '../core/event-bus';
+import { DatabaseService } from '../db/service';
 
 export class WebSocketGateway {
   private wss: WebSocketServer;
@@ -55,6 +56,42 @@ export class WebSocketGateway {
       logger.error('WebSocket client error', err);
     });
 
+    ws.on('message', async (data) => {
+      try {
+        const rawJson = data.toString();
+        const msg = JSON.parse(rawJson);
+        if (msg.action === 'sync' && msg.since) {
+          const sinceDate = new Date(msg.since);
+          if (!isNaN(sinceDate.getTime())) {
+            logger.info(`Client requested telemetry sync since: ${msg.since}`);
+            // Fetch missed events via database service with a safe maximum limit of 80
+            const missed = await DatabaseService.getEventsInRange(sinceDate, new Date(), 80);
+            logger.info(`Found ${missed.length} missed events for client synchronization`);
+            for (const ev of missed) {
+              const envelope: TelemetryEnvelope = {
+                topic: ev.type,
+                payload: {
+                  _isSync: true,
+                  id: ev.id,
+                  nodeId: ev.nodeId,
+                  message: ev.message,
+                  severity: ev.severity,
+                  timestamp: ev.timestamp,
+                  payload: ev.payload
+                },
+                timestamp: ev.timestamp ? ev.timestamp.toISOString() : new Date().toISOString()
+              };
+              if (ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify(envelope));
+              }
+            }
+          }
+        }
+      } catch (err) {
+        logger.error('Error handling client message in websocket gateway', err);
+      }
+    });
+
     // Send initial handshake
     this.send(ws, 'system:log', {
       source: 'backend:gateway',
@@ -73,6 +110,13 @@ export class WebSocketGateway {
     const message = JSON.stringify(envelope);
     this.clients.forEach((client) => {
       if (client.readyState === WebSocket.OPEN) {
+        // High frequency system logs backpressure mitigation
+        if (client.bufferedAmount > 1024 * 1024) { // 1MB buffer full
+          if (topic === 'system:log') {
+            // Drop low-urgency system logs under congested buffers to safeguard state channel
+            return;
+          }
+        }
         client.send(message);
       }
     });

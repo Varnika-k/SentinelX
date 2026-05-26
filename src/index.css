@@ -67,11 +67,9 @@
 
 @layer utilities {
   .cyber-grid {
-    background-image: 
-      linear-gradient(var(--color-border) 1px, transparent 1px),
-      linear-gradient(90deg, var(--color-border) 1px, transparent 1px);
-    background-size: 50px 50px;
-    mask-image: radial-gradient(circle at center, black 30%, transparent 80%);
+    background-image: radial-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px);
+    background-size: 40px 40px;
+    mask-image: radial-gradient(circle at center, black 40%, transparent 90%);
   }
 
   .text-glow-precision {
@@ -79,7 +77,7 @@
   }
 
   .glass-panel {
-    @apply bg-panel/80 backdrop-blur-md border border-border-bright/30;
+    @apply bg-panel/30 backdrop-blur-lg border border-white/5 shadow-[0_8px_32px_rgba(0,0,0,0.7)] rounded-sm;
   }
 
   .precision-button {

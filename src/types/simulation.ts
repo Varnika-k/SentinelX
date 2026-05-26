@@ -38,6 +38,10 @@ export interface SimulationState {
   simulationSpeed: number;
   spreadVelocity: number;
   activeDefenseModules: DefenseModule[];
+  defenseStrategyMode: 'balanced' | 'aggressive' | 'forensics' | 'resilience';
+  containmentStability?: number;
+  propagationReductionIndex?: number;
+  recoveryTrackingRating?: number;
 }
 
 export interface AttackPayload {

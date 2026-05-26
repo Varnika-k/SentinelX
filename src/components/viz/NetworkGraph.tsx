@@ -1,9 +1,12 @@
 import React, { useEffect, useRef, useState, useMemo, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import * as d3 from 'd3';
-import { NetworkNode, NetworkLink } from '../../types/network';
+import { NetworkNode, NetworkLink, SectorType, SECTOR_NAMES, getNodeSector } from '../../types/network';
 import { cn } from '../../lib/utils';
-import { ShieldAlert, ShieldCheck, ShieldOff } from 'lucide-react';
+import { 
+  ShieldAlert, ShieldCheck, ShieldOff, Activity, Compass, 
+  Crosshair, Cpu, Clock, Layers, Shield, Sparkles, Terminal
+} from 'lucide-react';
 import { GraphNode } from './GraphNode';
 import { GraphLink } from './GraphLink';
 import { CyberGrid } from './CyberGrid';
@@ -16,6 +19,17 @@ interface D3Link extends Omit<NetworkLink, 'source' | 'target'>, d3.SimulationLi
   source: D3Node;
   target: D3Node;
 }
+
+export const SECTOR_ANCHORS: Record<SectorType, { x: number; y: number }> = {
+  PERIMETER: { x: -80, y: 150 },
+  IDENTITY: { x: 50, y: 320 },
+  CLOUD: { x: 50, y: -120 },
+  PRODUCTION: { x: 200, y: 0 },
+  DATA_CORE: { x: 400, y: -10 },
+  OBSERVABILITY: { x: 200, y: -100 },
+  DEV_LAB: { x: 330, y: 250 },
+  ISOLATION_ZONE: { x: 460, y: 150 }
+};
 
 export interface VisualSettings {
   intensity: number;
@@ -46,7 +60,11 @@ export function NetworkGraph({
     pulseFrequency: 1,
     collisionRadius: 25,
     graphForce: -300
-  }
+  },
+  leftOffset = 0,
+  rightOffset = 0,
+  activeWorkspace = 'operations',
+  threatLevel = 'low'
 }: { 
   nodes: NetworkNode[], 
   links: NetworkLink[],
@@ -58,7 +76,11 @@ export function NetworkGraph({
   showSegmentation?: boolean,
   showCommunicationInstability?: boolean,
   isReplay?: boolean,
-  visualSettings?: VisualSettings
+  visualSettings?: VisualSettings,
+  leftOffset?: number,
+  rightOffset?: number,
+  activeWorkspace?: string,
+  threatLevel?: 'low' | 'medium' | 'high' | 'critical'
 }) {
   const svgRef = useRef<SVGSVGElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -66,6 +88,28 @@ export function NetworkGraph({
   const [simulationLinks, setSimulationLinks] = useState<D3Link[]>([]);
   const [transform, setTransform] = useState({ k: 1, x: 0, y: 0 });
   const [hoveredNode, setHoveredNode] = useState<D3Node | null>(null);
+  const [viewportSize, setViewportSize] = useState({ width: 800, height: 600 });
+
+  const highlightedNodeIdsOnHover = useMemo(() => {
+    if (!hoveredNode) return null;
+    const ids = new Set<string>();
+    ids.add(hoveredNode.id);
+    links.forEach(l => {
+      const srcId = typeof l.source === 'string' ? l.source : (l.source as any).id;
+      const tgtId = typeof l.target === 'string' ? l.target : (l.target as any).id;
+      if (srcId === hoveredNode.id) ids.add(tgtId);
+      if (tgtId === hoveredNode.id) ids.add(srcId);
+    });
+    return ids;
+  }, [hoveredNode, links]);
+
+  const checkIsInViewport = useCallback((x?: number, y?: number) => {
+    if (x === undefined || y === undefined) return true;
+    const cx = x * transform.k + transform.x;
+    const cy = y * transform.k + transform.y;
+    const pad = 100; // boundary padding margin for safe rendering frame
+    return cx >= -pad && cx <= viewportSize.width + pad && cy >= -pad && cy <= viewportSize.height + pad;
+  }, [transform.k, transform.x, transform.y, viewportSize.width, viewportSize.height]);
 
   const simulationRef = useRef<d3.Simulation<D3Node, D3Link> | null>(null);
 
@@ -107,10 +151,16 @@ export function NetworkGraph({
 
     if (!simulationRef.current) {
       const simulation = d3.forceSimulation<D3Node>(d3Nodes)
-        .force("link", d3.forceLink<D3Node, D3Link>(d3Links).id(d => d?.id || "").distance(65))
-        .force("charge", d3.forceManyBody().strength(visualSettings.graphForce || -300))
-        .force("center", d3.forceCenter(150, 150))
-        .force("collision", d3.forceCollide().radius(visualSettings.collisionRadius || 26));
+        .force("link", d3.forceLink<D3Node, D3Link>(d3Links).id(d => d?.id || "").distance(115))
+        .force("charge", d3.forceManyBody().strength(visualSettings.graphForce !== undefined ? visualSettings.graphForce - 150 : -450))
+        .force("center", d3.forceCenter(180, 100))
+        .force("x", d3.forceX<D3Node>().x(d => SECTOR_ANCHORS[getNodeSector(d)].x).strength(0.88))
+        .force("y", d3.forceY<D3Node>().y(d => SECTOR_ANCHORS[getNodeSector(d)].y).strength(0.88))
+        .force("collision", d3.forceCollide<D3Node>().radius(d => {
+          if (d.type === 'database' || d.type === 'hr-system') return 46;
+          if (d.type === 'gateway') return 42;
+          return 34;
+        }).iterations(4));
 
       simulation.on("tick", () => {
         setSimulationNodes([...simulation.nodes()]);
@@ -145,12 +195,21 @@ export function NetworkGraph({
 
     const charge = simulationRef.current.force("charge") as d3.ForceManyBody<D3Node>;
     if (charge) {
-      charge.strength(visualSettings.graphForce !== undefined ? visualSettings.graphForce : -300);
+      charge.strength(visualSettings.graphForce !== undefined ? visualSettings.graphForce - 150 : -450);
     }
 
     const collision = simulationRef.current.force("collision") as d3.ForceCollide<D3Node>;
     if (collision) {
-      collision.radius(visualSettings.collisionRadius !== undefined ? visualSettings.collisionRadius : 25);
+      collision.radius(visualSettings.collisionRadius !== undefined ? visualSettings.collisionRadius * 1.35 : 34);
+    }
+
+    const xForce = simulationRef.current.force("x") as d3.ForceX<D3Node>;
+    if (xForce) {
+      xForce.x(d => SECTOR_ANCHORS[getNodeSector(d)].x).strength(0.88);
+    }
+    const yForce = simulationRef.current.force("y") as d3.ForceY<D3Node>;
+    if (yForce) {
+      yForce.y(d => SECTOR_ANCHORS[getNodeSector(d)].y).strength(0.88);
     }
 
     const baseDecay = 0.0228;
@@ -164,6 +223,8 @@ export function NetworkGraph({
     isReplay
   ]);
 
+  const zoomBehaviorRef = useRef<d3.ZoomBehavior<SVGSVGElement, unknown> | null>(null);
+
   // Zoom and Drag behavior
   useEffect(() => {
     if (!svgRef.current || !containerRef.current) return;
@@ -172,19 +233,18 @@ export function NetworkGraph({
     const container = containerRef.current;
     
     const zoomBehavior = d3.zoom<SVGSVGElement, unknown>()
-      .scaleExtent([0.1, 5])
+      .scaleExtent([0.1, 8])
       .on("zoom", (event) => setTransform(event.transform));
 
+    zoomBehaviorRef.current = zoomBehavior;
     svg.call(zoomBehavior);
 
-    // Responsive centering
+    // Responsive centering (measures size)
     const updateSize = () => {
-      const { width, height } = container.getBoundingClientRect();
-      const currentWidth = width || 800;
-      const currentHeight = height || 600;
-      const tx = currentWidth / 2 - 225;
-      const ty = currentHeight / 2 - 225;
-      svg.call(zoomBehavior.transform, d3.zoomIdentity.translate(tx, ty).scale(1.5));
+      const rect = container.getBoundingClientRect();
+      const currentWidth = rect.width || 800;
+      const currentHeight = rect.height || 600;
+      setViewportSize({ width: currentWidth, height: currentHeight });
     };
 
     updateSize();
@@ -194,6 +254,31 @@ export function NetworkGraph({
 
     return () => observer.disconnect();
   }, []);
+
+  // Elite Dynamic Centering & Auto-Panning
+  useEffect(() => {
+    if (!svgRef.current || !zoomBehaviorRef.current) return;
+    
+    const svg = d3.select(svgRef.current);
+    const currentWidth = viewportSize.width || 800;
+    const currentHeight = viewportSize.height || 600;
+    
+    // Compute remaining visible tactical area width & horizontal center
+    const openWidth = currentWidth - leftOffset - rightOffset;
+    const centerX = leftOffset + openWidth / 2;
+    const centerY = currentHeight / 2;
+    
+    // Scale standard cluster around (150, 150)
+    const scale = 1.35;
+    const tx = centerX - 150 * scale;
+    const ty = centerY - 150 * scale;
+    
+    // Run a smooth transition to center the graph in the unoccupied screen space
+    svg.transition()
+      .duration(850)
+      .ease(d3.easeCubicInOut)
+      .call(zoomBehaviorRef.current.transform, d3.zoomIdentity.translate(tx, ty).scale(scale));
+  }, [leftOffset, rightOffset, viewportSize.width, viewportSize.height]);
 
   // Drag on nodes
   useEffect(() => {
@@ -276,10 +361,99 @@ export function NetworkGraph({
 
   return (
     <div ref={containerRef} className="relative w-full h-full bg-void overflow-hidden">
-      <CyberGrid />
+      <CyberGrid activeWorkspace={activeWorkspace} threatLevel={threatLevel} />
       
       {/* Edge Vignette */}
       <div className="absolute inset-0 pointer-events-none z-20 shadow-[inset_0_0_100px_rgba(0,0,0,0.8)]" />
+
+      {/* Advanced Immersive Tactical HUD Overlays (Objective F) */}
+      <div className="absolute inset-0 pointer-events-none z-20 flex flex-col justify-between p-6 select-none font-mono">
+        <div className="w-full flex justify-between items-start">
+          {/* Top Left: Precise Mode Core */}
+          <motion.div 
+            key={activeWorkspace}
+            initial={{ opacity: 0, x: -10 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.4 }}
+            className="glass-panel p-3 border-l-2 border-l-accent-cyan flex flex-col gap-1.5 shadow-[0_4px_20px_rgba(0,0,0,0.5)] max-w-[320px]"
+          >
+            <div className="flex items-center gap-2">
+              {activeWorkspace === 'operations' && <Activity size={12} className="text-accent-cyan animate-pulse" />}
+              {activeWorkspace === 'forensics' && <Clock size={12} className="text-amber-500" />}
+              {activeWorkspace === 'defense' && <Shield size={12} className="text-emerald-500 animate-pulse" />}
+              {activeWorkspace === 'twin' && <Cpu size={12} className="text-yellow-500" />}
+              {activeWorkspace === 'ai' && <Terminal size={12} className="text-accent-blue animate-pulse" />}
+              
+              <span className={cn(
+                "text-[10px] font-black tracking-widest uppercase",
+                activeWorkspace === 'operations' && "text-white",
+                activeWorkspace === 'forensics' && "text-amber-400",
+                activeWorkspace === 'defense' && "text-emerald-400",
+                activeWorkspace === 'twin' && "text-yellow-400",
+                activeWorkspace === 'ai' && "text-accent-blue"
+              )}>
+                {activeWorkspace === 'operations' && "POSTURE: GRID_MONITOR"}
+                {activeWorkspace === 'forensics' && "POSTURE: INCIDENT_FORENSICS"}
+                {activeWorkspace === 'defense' && "POSTURE: ACTIVE_DEFENSE_OPS"}
+                {activeWorkspace === 'twin' && "POSTURE: PREDICTIVE_LAB"}
+                {activeWorkspace === 'ai' && "POSTURE: COGNITIVE_REASONING"}
+              </span>
+            </div>
+
+            <p className="text-[7.5px] leading-relaxed text-text-secondary">
+              {activeWorkspace === 'operations' && "Topological live map of enterprise network fabric and current cluster traffic density."}
+              {activeWorkspace === 'forensics' && "Temporal freeze activated. Telemetry query channels configured for retro-causal tracing."}
+              {activeWorkspace === 'defense' && "Containment boundary overlays rendered. Cyber quarantine firewalls primed."}
+              {activeWorkspace === 'twin' && "Synthesizing prospective failure tipping points and lateral attack routes."}
+              {activeWorkspace === 'ai' && "Co-processor assessing system blast radius and multi-stage MITRE ATT&CK lineages."}
+            </p>
+
+            <div className="flex items-center gap-3 border-t border-white/5 pt-1.5 mt-0.5 text-[7px] text-text-tertiary">
+              <span className="flex items-center gap-1">
+                <span className={cn(
+                  "w-1 h-1 rounded-full",
+                  activeWorkspace === 'operations' ? "bg-accent-cyan/95 animate-pulse" :
+                  activeWorkspace === 'forensics' ? "bg-amber-400" :
+                  activeWorkspace === 'defense' ? "bg-emerald-400 animate-pulse" :
+                  activeWorkspace === 'twin' ? "bg-yellow-400" : "bg-accent-blue animate-pulse"
+                )} />
+                STATUS: {
+                  activeWorkspace === 'operations' ? "SYNCHRONIZED" :
+                  activeWorkspace === 'forensics' ? "STABILIZED" :
+                  activeWorkspace === 'defense' ? "ARMED" :
+                  activeWorkspace === 'twin' ? "MODELING" : "REASONING"
+                }
+              </span>
+              <span>SENSORS: 18/18</span>
+            </div>
+          </motion.div>
+
+          {/* Top Right: Systemic Integrity Monitor */}
+          <div className="flex flex-col items-end gap-1.5 text-right font-mono p-3 bg-panel/30 border border-border/40 rounded-sm">
+            <span className="text-[7px] tracking-widest text-text-tertiary font-bold uppercase">Blast Probability Engine</span>
+            <span className={cn(
+              "text-[10px] font-bold tracking-tight",
+              threatLevel === 'critical' ? "text-state-danger animate-pulse" :
+              threatLevel === 'high' ? "text-state-warning" : "text-state-safe"
+            )}>
+              {threatLevel === 'critical' ? "CRITICAL SYSTEMIC SPILLOVER" : 
+               threatLevel === 'high' ? "LATERAL COLLAPSE IMMINENT" : 
+               "PERIMETER PROTECTION RATED SECURE"}
+            </span>
+            <div className="flex items-center gap-2 mt-0.5 text-[6.5px] text-text-secondary">
+               <span>LATERAL_PROB: {(threatLevel === 'critical' ? 95 : threatLevel === 'high' ? 62 : 12)}%</span>
+               <span className="text-white/20">|</span>
+               <span>INTEGRITY_INDEX: {(threatLevel === 'critical' ? 'RED_PULSE' : threatLevel === 'high' ? 'DEGRADED_ORANGE' : 'STABLE_TEAL')}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Tactical Crosshair Marks for Military-Grade Immersiveness (Objective C) */}
+        <div className="absolute top-4 left-4 w-4 h-4 border-l border-t border-accent-cyan/25 pointer-events-none" />
+        <div className="absolute top-4 right-4 w-4 h-4 border-r border-t border-accent-cyan/25 pointer-events-none" />
+        <div className="absolute bottom-4 left-4 w-4 h-4 border-l border-b border-accent-cyan/25 pointer-events-none" />
+        <div className="absolute bottom-4 right-4 w-4 h-4 border-r border-b border-accent-cyan/25 pointer-events-none" />
+      </div>
       
       <svg 
         ref={svgRef} 
@@ -299,6 +473,35 @@ export function NetworkGraph({
         </defs>
 
         <g transform={`translate(${transform.x}, ${transform.y}) scale(${transform.k})`}>
+          {/* Subtle Sector Background Labels */}
+          {Object.entries(SECTOR_NAMES).map(([secId, secLabel]) => {
+            const secNodes = simulationNodes.filter(n => getNodeSector(n) === secId);
+            if (secNodes.length === 0) return null;
+            const avgX = d3.mean(secNodes, n => n.x ?? 0) ?? 0;
+            const avgY = d3.mean(secNodes, n => n.y ?? 0) ?? 0;
+            return (
+              <g key={secId} className="pointer-events-none select-none">
+                <text
+                  x={avgX}
+                  y={avgY - 48}
+                  textAnchor="middle"
+                  className="fill-white/[0.024] stroke-none font-sans font-black tracking-[0.24em] text-[15px] uppercase"
+                >
+                  {secLabel}
+                </text>
+                <text
+                  x={avgX}
+                  y={avgY - 36}
+                  textAnchor="middle"
+                  className="fill-accent-cyan/[0.04] stroke-none font-mono font-bold tracking-[0.18em] text-[6.5px] uppercase"
+                >
+                  {secId === 'ISOLATION_ZONE' ? '⚠️ CONTAINMENT_SEGMENT_ACTIVE' : '🛰️ GRID_SEGMENT_ONLINE'}
+                </text>
+                <circle cx={avgX} cy={avgY - 42} r="1.5" className="fill-accent-cyan/[0.04]" />
+              </g>
+            );
+          })}
+
           {/* Risk Clusters (Enhanced Heatmap) */}
           <AnimatePresence>
             {showHeatmap && simulationNodes.filter(n => n.status === 'compromised').map(node => (
@@ -318,19 +521,35 @@ export function NetworkGraph({
           </AnimatePresence>
 
           {/* Links */}
-          {simulationLinks.map(link => (
-            <GraphLink 
-              key={link.id}
-              id={link.id}
-              source={link.source}
-              target={link.target}
-              traffic={link.traffic}
-              riskWeight={link.riskWeight}
-              showHeatmap={showHeatmap}
-              showCommunicationInstability={showCommunicationInstability}
-              visualSettings={visualSettings}
-            />
-          ))}
+          {simulationLinks.map(link => {
+            const isVisible = checkIsInViewport(link.source.x, link.source.y) || checkIsInViewport(link.target.x, link.target.y);
+            if (!isVisible) return null;
+            const isLinkDimmed = highlightedNodeIdsOnHover
+              ? link.source.id !== hoveredNode?.id && link.target.id !== hoveredNode?.id
+              : false;
+            return (
+              <g 
+                key={link.id} 
+                className={cn(
+                  "transition-all duration-300", 
+                  isLinkDimmed ? "opacity-10 pointer-events-none filter blur-[0.5px]" : "opacity-100"
+                )}
+              >
+                <GraphLink 
+                  id={link.id}
+                  source={link.source}
+                  target={link.target}
+                  traffic={link.traffic}
+                  riskWeight={link.riskWeight}
+                  showHeatmap={showHeatmap}
+                  showCommunicationInstability={showCommunicationInstability}
+                  visualSettings={visualSettings}
+                  zoomScale={transform.k}
+                  type={link.type}
+                />
+              </g>
+            );
+          })}
 
           {/* Attack Path Overlays */}
           {highlightedPaths && highlightedPaths.map((path, pathIdx) => (
@@ -340,6 +559,9 @@ export function NetworkGraph({
                 const source = simulationNodes.find(n => n.id === nodeId);
                 const target = simulationNodes.find(n => n.id === path[nodeIdx + 1]);
                 if (!source || !target) return null;
+
+                const isVisible = checkIsInViewport(source.x, source.y) || checkIsInViewport(target.x, target.y);
+                if (!isVisible) return null;
 
                 return (
                   <motion.line
@@ -368,17 +590,27 @@ export function NetworkGraph({
 
           {/* Nodes */}
           {simulationNodes.map(node => {
-            const shouldHideLabel = transform.k < 1.15 && 
+            const isVisible = checkIsInViewport(node.x, node.y) || selectedNodeId === node.id || highlightedNodeId === node.id;
+            if (!isVisible) return null;
+
+            const shouldHideLabel = transform.k < 1.35 && 
+              node.type !== 'database' && 
+              node.type !== 'gateway' && 
+              node.type !== 'hr-system' &&
               node.status !== 'compromised' && 
               selectedNodeId !== node.id && 
               highlightedNodeId !== node.id;
+
+            const isNodeDimmed = (node as any).isDimmed || (highlightedNodeIdsOnHover
+              ? !highlightedNodeIdsOnHover.has(node.id)
+              : (highlightedNodeId ? node.id !== highlightedNodeId && node.id !== selectedNodeId : false));
 
             return (
               <g 
                 key={node.id} 
                 className={cn(
-                  "transition-all duration-1000",
-                  (node as any).isDimmed ? "opacity-15 pointer-events-none filter blur-[1px]" : "opacity-100"
+                  "transition-all duration-300",
+                  isNodeDimmed ? "opacity-15 pointer-events-none filter blur-[0.5px]" : "opacity-100"
                 )}
               >
                 <GraphNode 
@@ -391,6 +623,7 @@ export function NetworkGraph({
                   showSegmentation={showSegmentation}
                   visualSettings={visualSettings}
                   hideLabel={shouldHideLabel}
+                  activeWorkspace={activeWorkspace}
                 />
               </g>
             );
@@ -429,23 +662,62 @@ export function NetworkGraph({
                 </span>
               </div>
               
-              <div className="grid grid-cols-2 gap-x-4 gap-y-3">
-                 <div className="flex flex-col">
-                    <span className="text-[9px] text-text-tertiary font-bold uppercase tracking-wider">Subsystem</span>
-                    <span className="text-[11px] text-text-primary font-semibold uppercase">{hoveredNode.type}</span>
+              <div className="grid grid-cols-2 gap-x-3 gap-y-2 border-b border-border/30 pb-2 mb-2">
+                 <div className="flex flex-col justify-center">
+                    <span className="text-[8px] text-text-tertiary font-bold uppercase tracking-wider">Subsystem</span>
+                    <span className="text-[10px] text-text-primary font-semibold uppercase">{hoveredNode.type}</span>
                  </div>
-                 <div className="p-2 border border-border-bright/20 rounded-sm flex flex-col justify-center bg-void/50">
-                    <span className="text-[9px] text-text-tertiary font-bold uppercase tracking-wider">Risk Score</span>
+                 <div className="px-2 py-1 border border-border-bright/10 rounded-sm flex flex-col justify-center bg-void/55">
+                    <span className="text-[8px] text-text-tertiary font-bold uppercase tracking-wider font-mono">Risk Index</span>
                     <span className={cn(
-                      "text-[16px] font-mono font-bold leading-none mt-1",
+                      "text-[13px] font-mono font-bold leading-none mt-0.5",
                       (hoveredNode.threatScore || 0) > 70 ? "text-state-danger" : (hoveredNode.threatScore || 0) > 40 ? "text-state-warning" : "text-state-safe"
                     )}>
                       {(hoveredNode.threatScore || 0).toFixed(0)}
                     </span>
                  </div>
                  <div className="flex flex-col col-span-2">
-                    <span className="text-[9px] text-text-tertiary font-bold uppercase tracking-wider">System Identifier</span>
-                    <span className="text-[10px] text-text-secondary font-mono overflow-hidden text-ellipsis whitespace-nowrap">{hoveredNode.id}</span>
+                    <span className="text-[8px] text-text-tertiary font-bold uppercase tracking-wider font-mono">System Identifier</span>
+                    <span className="text-[9px] text-text-secondary font-mono overflow-hidden text-ellipsis whitespace-nowrap">{hoveredNode.id}</span>
+                 </div>
+              </div>
+
+              {/* Dynamic Tactical Indicators */}
+              <div className="space-y-1.5 border-b border-border/30 pb-2 mb-2">
+                 <div className="space-y-0.5">
+                   <div className="flex items-center justify-between text-[8px] leading-none text-text-secondary font-mono">
+                     <span>CRITICALITY</span>
+                     <span className="font-mono text-accent-cyan font-semibold">{(hoveredNode.criticality * 100).toFixed(0)}%</span>
+                   </div>
+                   <div className="w-full h-1 bg-void/70 rounded-full overflow-hidden">
+                     <div className="h-full bg-accent-cyan transition-all duration-300" style={{ width: `${hoveredNode.criticality * 100}%` }} />
+                   </div>
+                 </div>
+
+                 <div className="space-y-0.5">
+                   <div className="flex items-center justify-between text-[8px] leading-none text-text-secondary font-mono">
+                     <span>SECURITY EXPOSURE</span>
+                     <span className="font-mono text-state-warning font-semibold">{(hoveredNode.vulnerability * 100).toFixed(0)}%</span>
+                   </div>
+                   <div className="w-full h-1 bg-void/70 rounded-full overflow-hidden">
+                     <div className="h-full bg-state-warning transition-all duration-300" style={{ width: `${hoveredNode.vulnerability * 100}%` }} />
+                   </div>
+                 </div>
+              </div>
+
+              {/* Deployment Position */}
+              <div className="space-y-1 text-[9px] leading-none font-mono">
+                 <div className="flex items-center justify-between text-text-secondary">
+                   <span className="text-text-tertiary font-bold text-[8px]">GRID SECTOR</span>
+                   <span className="text-white font-bold tracking-wider">{getNodeSector(hoveredNode)}</span>
+                 </div>
+                 <div className="flex items-center justify-between text-text-secondary mt-1">
+                   <span className="text-text-tertiary font-bold text-[8px]">MONITOR FEED</span>
+                   <span className="text-state-safe font-bold">{hoveredNode.monitoringLevel || 100}%</span>
+                 </div>
+                 <div className="flex items-center justify-between text-text-secondary mt-1">
+                   <span className="text-text-tertiary font-bold text-[8px]">HEARTBEAT</span>
+                   <span className="text-accent-cyan">{hoveredNode.latency || 5}ms</span>
                  </div>
               </div>
             </div>

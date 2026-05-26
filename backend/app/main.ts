@@ -14,6 +14,11 @@ import { cloudTelemetryService } from './services/cloud-telemetry';
 import { telemetryPipeline } from './telemetry/pipeline';
 
 import { aiService } from './services/ai';
+import { unifiedEventBus } from '../core/event-bus';
+import { graphStateRuntime } from '../core/graph-runtime';
+import { replayPersistenceEngine } from '../core/replay-engine';
+import { MockDataGenerator } from '../core/mock-data-generator';
+import { liveAttackExecutionEngine } from '../runtime/attack-engine';
 
 export class SentinelBackend {
   private app: express.Express;
@@ -193,6 +198,8 @@ export class SentinelBackend {
          const { nodeName, action } = req.body;
          if (action === 'isolate') {
            digitalTwinEngine.isolateSimulatedNode(nodeName);
+         } else if (action === 'unisolate' || action === 'rollback') {
+           digitalTwinEngine.unisolateSimulatedNode(nodeName);
          } else if (action === 'scale') {
            digitalTwinEngine.scaleUpWorkload(nodeName);
          } else if (action === 'chaos') {
@@ -298,6 +305,77 @@ export class SentinelBackend {
       }
     });
 
+    // --- Unified Core Event Runtime v2 API Endpoints ---
+    this.app.get('/api/v2/events', async (req, res) => {
+      try {
+        const events = await replayPersistenceEngine.getLedgerOrdered();
+        res.json(events);
+      } catch (error) {
+        res.status(500).json({ error: (error as Error).message });
+      }
+    });
+
+    this.app.post('/api/v2/events/ingest', async (req, res) => {
+      try {
+        const normalizedEvent = await unifiedEventBus.ingestEvent(req.body);
+        res.json({ success: true, event: normalizedEvent });
+      } catch (error) {
+        res.status(500).json({ error: (error as Error).message });
+      }
+    });
+
+    this.app.get('/api/v2/graph/state', (req, res) => {
+      try {
+        res.json({
+          nodes: graphStateRuntime.getNodes(),
+          edges: graphStateRuntime.getEdges()
+        });
+      } catch (error) {
+        res.status(500).json({ error: (error as Error).message });
+      }
+    });
+
+    this.app.post('/api/v2/scenarios/trigger', async (req, res) => {
+      try {
+        const { type } = req.body;
+        if (!['ransomware', 'ddos', 'phishing', 'insider', 'zeroday', 'lateral', 'credential_compromise'].includes(type)) {
+          return res.status(400).json({ error: 'Invalid campaign scenario type.' });
+        }
+        // Run scenario asynchronously via Live Attack Execution Engine
+        liveAttackExecutionEngine.launchAttack(type).catch(err => {
+          logger.error(`Scenario trigger async error:`, err);
+        });
+        res.json({ success: true, message: `Campaign scenario ${type} initialized in Live Attack Execution Engine.` });
+      } catch (error) {
+        res.status(500).json({ error: (error as Error).message });
+      }
+    });
+
+    this.app.post('/api/v2/defenses/trigger', async (req, res) => {
+      try {
+        const { nodeId, actionType } = req.body;
+        if (!nodeId || !['isolate', 'quarantine', 'restore', 'scrub'].includes(actionType)) {
+          return res.status(400).json({ error: 'Missing nodeId or invalid actionType.' });
+        }
+        await liveAttackExecutionEngine.executeDefenseAction(nodeId, actionType);
+        res.json({ success: true, message: `Defense action ${actionType} executed on nodeId ${nodeId}` });
+      } catch (error) {
+        res.status(500).json({ error: (error as Error).message });
+      }
+    });
+
+    this.app.get('/api/v2/replays/reconstruct/:correlationId', async (req, res) => {
+      try {
+        const report = await replayPersistenceEngine.reconstructCampaign(req.params.correlationId);
+        if (!report) {
+          return res.status(404).json({ error: `Campaign not found for correlation identifier.` });
+        }
+        res.json(report);
+      } catch (error) {
+        res.status(500).json({ error: (error as Error).message });
+      }
+    });
+
     // Handle API 404 (Endpoint Not Found) so we never return raw index.html block on API misses
     this.app.use('/api', (req, res) => {
       res.status(404).json({ error: `API route '${req.originalUrl}' not found.` });
@@ -347,6 +425,14 @@ export class SentinelBackend {
           // 3. Initiate local and cloud indicators
           this.telemetry.start();
           cloudTelemetryService.start();
+          
+          // Initiate v2 core Unified Event Bus background generation
+          setInterval(() => {
+            MockDataGenerator.generateBackgroundTelemetry().catch(err => {
+              logger.error('Failed to generate continuous background operational telemetry', err);
+            });
+          }, 8000);
+          logger.info('Unified Event Bus background telemetry harness activated.');
           
           logger.info('SentinelX active defense analytics, incident reconciliation, and core telemetry ingestion fully engaged.');
         } catch (error) {

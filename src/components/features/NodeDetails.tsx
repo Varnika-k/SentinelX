@@ -382,7 +382,6 @@ export function NodeDetails({
             >
               View Full Tactical Report <ChevronDown size={10} className="-rotate-90" />
             </button>
-            <div className="absolute inset-0 pointer-events-none bg-gradient-to-b from-transparent via-accent-cyan/5 to-transparent h-[1px] w-full animate-scanline" />
           </div>
         </div>
 

@@ -81,17 +81,12 @@ export function BootSequence({ onComplete }: { onComplete: () => void }) {
       <div className="absolute bottom-12 left-12 w-8 h-8 border-b-4 border-l-4 border-white/10" />
       <div className="absolute bottom-12 right-12 w-8 h-8 border-b-4 border-r-4 border-white/10" />
 
-      {/* Scanline Overlay */}
-      <div className="absolute inset-0 pointer-events-none z-10 overflow-hidden">
-        <div className="w-full h-px bg-gradient-to-r from-transparent via-accent-cyan/30 to-transparent animate-scanline" />
-      </div>
-
       <motion.div 
-        animate={{ opacity: [0.05, 0.1, 0.05] }}
-        transition={{ duration: 4, repeat: Infinity }}
+        animate={{ opacity: [0.03, 0.08, 0.03] }}
+        transition={{ duration: 5, repeat: Infinity, ease: 'easeInOut' }}
         className="absolute inset-0 pointer-events-none"
         style={{
-          backgroundImage: 'radial-gradient(circle at 50% 50%, rgba(0,255,209,0.05) 0%, transparent 80%)'
+          backgroundImage: 'radial-gradient(circle at 50% 50%, rgba(0,242,255,0.03) 0%, transparent 80%)'
         }}
       />
     </div>
